@@ -26,6 +26,7 @@ const duels = [
   {
     id: "run-20",
     title: "Corsa 20km",
+    type: "Corsa",
     you: { name: "Tu", progress: 12, total: 20 },
     rival: { name: "Mira", progress: 15, total: 20 },
     timeLeft: "2 giorni",
@@ -34,6 +35,7 @@ const duels = [
   {
     id: "swim-8",
     title: "Nuoto 8km",
+    type: "Nuoto",
     you: { name: "Tu", progress: 3.4, total: 8 },
     rival: { name: "Vex", progress: 2.8, total: 8 },
     timeLeft: "18 ore",
@@ -42,6 +44,7 @@ const duels = [
   {
     id: "gym-6",
     title: "Palestra 6 sessioni",
+    type: "Palestra",
     you: { name: "Tu", progress: 4, total: 6 },
     rival: { name: "Neo", progress: 5, total: 6 },
     timeLeft: "4 giorni",
@@ -62,6 +65,33 @@ const ARENA_STORAGE_KEY = "lifequest:arena-duels";
 function progressPercent(current: number, total: number) {
   if (!total) return 0;
   return Math.min(100, Math.round((current / total) * 100));
+}
+
+function resolveDuelType(duel: { type?: string; title: string }) {
+  if (duel.type) return duel.type;
+  const title = duel.title.toLowerCase();
+  if (title.includes("nuoto")) return "Nuoto";
+  if (title.includes("palestra") || title.includes("gym")) return "Palestra";
+  return "Corsa";
+}
+
+function formatGapLabel(type: string, gap: number) {
+  if (!Number.isFinite(gap)) return "0";
+  const sign = gap > 0 ? "+" : gap < 0 ? "-" : "";
+  const abs = Math.abs(gap);
+
+  if (type === "Palestra") {
+    const value = Math.round(abs);
+    return `${sign}${value} sessioni`;
+  }
+
+  if (abs < 1) {
+    const meters = Math.round(abs * 1000);
+    return `${sign}${meters} m`;
+  }
+
+  const value = abs % 1 === 0 ? abs.toFixed(0) : abs.toFixed(1);
+  return `${sign}${value} km`;
 }
 
 export default function ArenaPage() {
@@ -196,6 +226,7 @@ export default function ArenaPage() {
       {
         id,
         title: `${payload.type} ${payload.goal} ${payload.unit}`,
+        type: payload.type,
         you: { name: "Tu", progress: 0, total: Number(payload.goal) || 1 },
         rival: { name: payload.rival, progress: 0, total: Number(payload.goal) || 1 },
         timeLeft: "7 giorni",
@@ -290,6 +321,25 @@ export default function ArenaPage() {
                 duel.rival.progress,
                 duel.rival.total
               );
+              const duelType = resolveDuelType(duel);
+              const gapValue = duel.you.progress - duel.rival.progress;
+              const gapLabel = formatGapLabel(duelType, gapValue);
+              const status =
+                youPct > rivalPct
+                  ? {
+                      label: "Stai Vincendo! 🏆",
+                      tone: "border-emerald-400/60 bg-emerald-500/15 text-emerald-200"
+                    }
+                  : youPct < rivalPct
+                    ? {
+                        label: "Recupera! 🔥",
+                        tone: "border-rose-400/60 bg-rose-500/15 text-rose-200"
+                      }
+                    : {
+                        label: "Testa a testa",
+                        tone: "border-slate-600/70 bg-slate-700/40 text-slate-200"
+                      };
+              const showStravaLink = duelType === "Corsa" || duelType === "Nuoto";
 
               return (
                 <div
@@ -320,6 +370,16 @@ export default function ArenaPage() {
                         {duel.you.progress}/{duel.you.total}
                       </p>
                       <p className="text-xs text-slate-400">Progresso</p>
+                      {showStravaLink ? (
+                        <a
+                          href="https://www.strava.com/record"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-3 inline-flex text-xs font-semibold text-cyan-200 transition hover:text-cyan-100"
+                        >
+                          Apri Strava per registrare
+                        </a>
+                      ) : null}
                     </div>
 
                     <div className="flex items-center justify-center text-sm font-semibold text-red-200">
@@ -337,7 +397,18 @@ export default function ArenaPage() {
                     </div>
                   </div>
 
-                  <div className="mt-5 rounded-full border border-white/10 bg-slate-950/80 p-2">
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+                    <span
+                      className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold ${status.tone}`}
+                    >
+                      {status.label}
+                    </span>
+                    <span className="text-xs font-semibold text-slate-200">
+                      Distacco {gapLabel}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 rounded-full border border-white/10 bg-slate-950/80 p-2">
                     <div className="relative flex h-3 overflow-hidden rounded-full bg-slate-800/80">
                       <div
                         className="h-full bg-gradient-to-r from-cyan-400 to-cyan-200"
