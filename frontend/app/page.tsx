@@ -33,6 +33,7 @@ const ACTIVITIES_URL = `${BACKEND_BASE_URL}/activities`;
 const USER_STATS_URL = `${BACKEND_BASE_URL}/user/stats`;
 const SEEN_BADGES_KEY = "lifequest:seen-badges";
 const STRAVA_SYNCED_KEY = "lifequest:strava-synced";
+const BALANCE_REFRESH_KEY = "lifequest:balance-refresh";
 const ACTIVITIES_PREVIEW_LIMIT = 6;
 const LEVEL_UP_COST = 500;
 const BURN_ADDRESS = "0x000000000000000000000000000000000000dEaD" as Address;
@@ -776,6 +777,22 @@ function HomeContent() {
       setSyncNotice(null);
     }
   }, [isWalletConnected]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = (event: StorageEvent) => {
+      if (event.key !== BALANCE_REFRESH_KEY) return;
+      void refetchLifeBalance();
+    };
+    window.addEventListener("storage", handler);
+    const stored = window.localStorage.getItem(BALANCE_REFRESH_KEY);
+    if (stored) {
+      void refetchLifeBalance();
+    }
+    return () => {
+      window.removeEventListener("storage", handler);
+    };
+  }, [refetchLifeBalance]);
 
   const weekBounds = useMemo(() => {
     const { start, end } = getWeekBounds(new Date());

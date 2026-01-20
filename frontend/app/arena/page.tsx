@@ -34,6 +34,8 @@ const OWNER_ADDRESS = (process.env.NEXT_PUBLIC_OWNER_ADDRESS ??
   "0x0000000000000000000000000000000000000000") as Address;
 const LIFE_TOKEN_ABI = parseAbi([
   "function balanceOf(address owner) view returns (uint256)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)",
   "function transfer(address to, uint256 amount) returns (bool)"
 ]);
 type ArenaDuel = {
@@ -41,16 +43,21 @@ type ArenaDuel = {
   title: string;
   type?: string | null;
   unit?: string | null;
+  status?: string | null;
+  creatorAddress?: string | null;
+  opponentAddress?: string | null;
   you: { name: string; progress: number; total: number };
   rival: { name: string; progress: number; total: number };
   timeLeft: string;
   stake: string;
+  stakeValue: number;
 };
 
 type ChallengeRow = {
   id?: string;
   creator_address?: string | null;
   opponent_name?: string | null;
+  opponent_address?: string | null;
   type?: string | null;
   goal?: number | string | null;
   stake?: number | string | null;
@@ -96,10 +103,14 @@ function buildDuelFromRow(row: ChallengeRow): ArenaDuel {
     title,
     type,
     unit,
+    status: row.status ?? "active",
+    creatorAddress: row.creator_address ?? null,
+    opponentAddress: row.opponent_address ?? null,
     you: { name: "Tu", progress: 0, total: goalValue },
     rival: { name: row.opponent_name ?? "Avversario", progress: 0, total: goalValue },
     timeLeft: formatTimeLeft(row.created_at, CHALLENGE_DURATION_DAYS),
-    stake: `${stakeValue} LIFE`
+    stake: `${stakeValue} LIFE`,
+    stakeValue
   };
 }
 
@@ -171,14 +182,26 @@ export default function ArenaPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isApproving, setIsApproving] = useState(false);
   const [isTransferring, setIsTransferring] = useState(false);
+  const [acceptingChallengeId, setAcceptingChallengeId] = useState<string | null>(null);
+  const [acceptStage, setAcceptStage] = useState<"approving" | "transferring" | "updating" | null>(null);
+  const [acceptError, setAcceptError] = useState<string | null>(null);
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
-  const { data: lifeBalance } = useReadContract({
+  const { data: lifeBalance, refetch: refetchLifeBalance } = useReadContract({
     address: LIFE_TOKEN_ADDRESS,
     abi: LIFE_TOKEN_ABI,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
+    query: {
+      enabled: Boolean(address)
+    }
+  });
+  const { data: allowanceValue, refetch: refetchAllowance } = useReadContract({
+    address: LIFE_TOKEN_ADDRESS,
+    abi: LIFE_TOKEN_ABI,
+    functionName: "allowance",
+    args: address ? [address, OWNER_ADDRESS] : undefined,
     query: {
       enabled: Boolean(address)
     }
@@ -350,6 +373,73 @@ export default function ArenaPage() {
     // Rimosso refetchAllowance e allowanceValue perche non servono piu
   ]);
 
+  const handleAcceptChallenge = useCallback(
+    async (duel: ArenaDuel) => {
+      if (!address || !publicClient) return;
+      if (duel.status !== "active") return;
+      if (duel.creatorAddress?.toLowerCase() === address.toLowerCase()) return;
+
+      const stakeValue = duel.stakeValue;
+      if (!Number.isFinite(stakeValue) || stakeValue <= 0) {
+        setAcceptError("Stake non valido.");
+        return;
+      }
+
+      setAcceptError(null);
+      setAcceptingChallengeId(duel.id);
+
+      try {
+        const stakeWei = parseEther(stakeValue.toString());
+        const allowanceResult = await refetchAllowance();
+        const allowance = allowanceResult.data ?? allowanceValue ?? BigInt(0);
+
+        if (allowance < stakeWei) {
+          setAcceptStage("approving");
+          const approveHash = await writeContractAsync({
+            address: LIFE_TOKEN_ADDRESS,
+            abi: LIFE_TOKEN_ABI,
+            functionName: "approve",
+            args: [OWNER_ADDRESS, stakeWei]
+          });
+          await publicClient.waitForTransactionReceipt({ hash: approveHash });
+        }
+
+        setAcceptStage("transferring");
+        const transferHash = await writeContractAsync({
+          address: LIFE_TOKEN_ADDRESS,
+          abi: LIFE_TOKEN_ABI,
+          functionName: "transfer",
+          args: [OWNER_ADDRESS, stakeWei]
+        });
+        await publicClient.waitForTransactionReceipt({ hash: transferHash });
+
+        setAcceptStage("updating");
+        const { error } = await supabase
+          .from("challenges")
+          .update({ status: "matched", opponent_address: address })
+          .eq("id", duel.id);
+        if (error) {
+          console.error(error);
+          setAcceptError("Errore aggiornamento sfida.");
+          return;
+        }
+
+        await fetchChallenges();
+        await refetchLifeBalance();
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("lifequest:balance-refresh", Date.now().toString());
+        }
+      } catch (error) {
+        console.error(error);
+        setAcceptError(getTxErrorMessage(error));
+      } finally {
+        setAcceptStage(null);
+        setAcceptingChallengeId(null);
+      }
+    },
+    [address, allowanceValue, fetchChallenges, publicClient, refetchAllowance, writeContractAsync]
+  );
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(239,68,68,0.18),transparent_55%)]" />
@@ -463,6 +553,27 @@ export default function ArenaPage() {
                           tone: "border-slate-600/70 bg-slate-700/40 text-slate-200"
                         };
                 const showStravaLink = duelType === "Corsa" || duelType === "Nuoto";
+                const isCreator =
+                  Boolean(address && duel.creatorAddress) &&
+                  duel.creatorAddress?.toLowerCase() === address.toLowerCase();
+                const canAccept =
+                  isConnected && !isCreator && duel.status === "active";
+                const isAccepting = acceptingChallengeId === duel.id;
+                const acceptLabel =
+                  acceptStage === "approving" && isAccepting
+                    ? "Approvo..."
+                    : acceptStage === "transferring" && isAccepting
+                      ? "Invio LIFE..."
+                      : acceptStage === "updating" && isAccepting
+                        ? "Entro in Arena..."
+                        : "Accetta";
+
+                const statusLabel =
+                  duel.status === "matched" ? "Matched" : "Open";
+                const statusTone =
+                  duel.status === "matched"
+                    ? "border-emerald-400/60 bg-emerald-500/15 text-emerald-200"
+                    : "border-slate-600/70 bg-slate-700/40 text-slate-200";
 
                 return (
                   <div
@@ -478,9 +589,16 @@ export default function ArenaPage() {
                         {duel.title}
                       </h3>
                     </div>
-                    <div className="inline-flex items-center gap-2 rounded-full border border-amber-400/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-200">
-                      <Trophy className="h-4 w-4" />
-                      Scommetti {duel.stake}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${statusTone}`}
+                      >
+                        {statusLabel}
+                      </span>
+                      <div className="inline-flex items-center gap-2 rounded-full border border-amber-400/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-200">
+                        <Trophy className="h-4 w-4" />
+                        Scommetti {duel.stake}
+                      </div>
                     </div>
                   </div>
 
@@ -552,9 +670,34 @@ export default function ArenaPage() {
                     <Timer className="h-4 w-4 text-cyan-200" />
                     Tempo rimasto: {duel.timeLeft}
                   </div>
+
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                    <span className="text-xs uppercase tracking-[0.3em] text-slate-400">
+                      {duel.status === "matched" ? "Sfida attiva" : "Sfida aperta"}
+                    </span>
+                    {duel.status === "active" ? (
+                      <button
+                        type="button"
+                        onClick={() => handleAcceptChallenge(duel)}
+                        disabled={!canAccept || isAccepting}
+                        className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
+                          canAccept && !isAccepting
+                            ? "border border-red-400/50 bg-red-500/10 text-red-200 hover:border-red-300/70 hover:text-red-100"
+                            : "border border-slate-700/60 bg-slate-900/60 text-slate-500 cursor-not-allowed"
+                        }`}
+                      >
+                        {isConnected ? acceptLabel : "Connetti wallet"}
+                      </button>
+                    ) : null}
+                  </div>
+                  {acceptError && isAccepting ? (
+                    <div className="mt-3 rounded-2xl border border-rose-400/40 bg-rose-500/10 px-4 py-2 text-xs text-rose-200">
+                      {acceptError}
+                    </div>
+                  ) : null}
                 </div>
-                );
-              })
+              );
+            })
             )}
           </div>
         </section>
