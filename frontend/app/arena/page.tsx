@@ -319,10 +319,10 @@ export default function ArenaPage() {
         opponent_name: payload.rival,
         type: payload.type,
         goal: Number(payload.goal),
-        stake: payload.stake,
+        stake: Number(payload.stake),
         status: "active"
       };
-      console.log("Dati inviati a Supabase:", insertPayload);
+      console.log("Dati finali per DB:", insertPayload);
       const { error } = await supabase.from("challenges").insert(insertPayload);
       if (error) {
         console.error("Supabase insert error:", error.message, error.details);
