@@ -29,8 +29,13 @@ const LIFE_TOKEN_ADDRESS = (process.env.NEXT_PUBLIC_LIFE_TOKEN_ADDRESS ??
   process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ??
   "0x0000000000000000000000000000000000000000") as Address;
 const BURN_ADDRESS = "0x000000000000000000000000000000000000dEaD" as Address;
+const ARENA_SPENDER_ADDRESS = (process.env.NEXT_PUBLIC_ARENA_SPENDER_ADDRESS ??
+  process.env.NEXT_PUBLIC_OWNER_ADDRESS ??
+  BURN_ADDRESS) as Address;
 const LIFE_TOKEN_ABI = parseAbi([
   "function balanceOf(address owner) view returns (uint256)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)",
   "function transfer(address to, uint256 amount) returns (bool)"
 ]);
 type ArenaDuel = {
@@ -148,6 +153,11 @@ export default function ArenaPage() {
     writeContract
   } = useWriteContract();
   const {
+    data: approveTxHash,
+    isPending: isApprovePending,
+    writeContract: writeApproveContract
+  } = useWriteContract();
+  const {
     isLoading: isBurnConfirming,
     isSuccess: isBurnSuccess
   } = useWaitForTransactionReceipt({
@@ -156,11 +166,29 @@ export default function ArenaPage() {
       enabled: Boolean(burnTxHash)
     }
   });
+  const {
+    isLoading: isApproveConfirming,
+    isSuccess: isApproveSuccess
+  } = useWaitForTransactionReceipt({
+    hash: approveTxHash,
+    query: {
+      enabled: Boolean(approveTxHash)
+    }
+  });
   const { data: lifeBalance } = useReadContract({
     address: LIFE_TOKEN_ADDRESS,
     abi: LIFE_TOKEN_ABI,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
+    query: {
+      enabled: Boolean(address)
+    }
+  });
+  const { data: allowanceValue, refetch: refetchAllowance } = useReadContract({
+    address: LIFE_TOKEN_ADDRESS,
+    abi: LIFE_TOKEN_ABI,
+    functionName: "allowance",
+    args: address ? [address, ARENA_SPENDER_ADDRESS] : undefined,
     query: {
       enabled: Boolean(address)
     }
@@ -181,6 +209,7 @@ export default function ArenaPage() {
     rival: string;
     unit: string;
   } | null>(null);
+  const transferRequestedRef = useRef(false);
 
   const fetchChallenges = useCallback(async () => {
     setIsChallengesLoading(true);
@@ -234,14 +263,21 @@ export default function ArenaPage() {
       stakeValue <= lifeBalanceValue
     );
   }, [challengeGoal, challengeRival, isConnected, lifeBalanceValue, stakeValue]);
+  const stakeWei = useMemo(() => {
+    if (!Number.isFinite(stakeValue) || stakeValue <= 0) return null;
+    return parseEther(stakeValue.toString());
+  }, [stakeValue]);
   const isBurning = isBurnPending || isBurnConfirming;
+  const isApproving = isApprovePending || isApproveConfirming;
   const createLabel = isBurnPending
-    ? "Waiting validation..."
+    ? "Creo Sfida..."
     : isBurnConfirming
-      ? "Conferma on-chain..."
-      : isSavingChallenge
-        ? "Salvataggio..."
-        : "Crea Sfida";
+      ? "Creo Sfida..."
+      : isApproving
+        ? "Approvo LIFE..."
+        : isSavingChallenge
+          ? "Salvataggio..."
+          : "Crea Sfida";
 
   const handleCreateChallenge = () => {
     if (!isChallengeValid) return;
@@ -253,12 +289,25 @@ export default function ArenaPage() {
       rival: challengeRival,
       unit: challengeConfig.unit
     };
+    if (!stakeWei) return;
     pendingChallengeRef.current = payload;
+    transferRequestedRef.current = false;
+    const allowance = allowanceValue ?? 0n;
+    if (allowance < stakeWei) {
+      writeApproveContract({
+        address: LIFE_TOKEN_ADDRESS,
+        abi: LIFE_TOKEN_ABI,
+        functionName: "approve",
+        args: [ARENA_SPENDER_ADDRESS, stakeWei]
+      });
+      return;
+    }
+    transferRequestedRef.current = true;
     writeContract({
       address: LIFE_TOKEN_ADDRESS,
       abi: LIFE_TOKEN_ABI,
       functionName: "transfer",
-      args: [BURN_ADDRESS, parseEther(payload.stake.toString())]
+      args: [BURN_ADDRESS, stakeWei]
     });
   };
 
@@ -266,6 +315,7 @@ export default function ArenaPage() {
     if (!isBurnSuccess || !pendingChallengeRef.current) return;
     const payload = pendingChallengeRef.current;
     pendingChallengeRef.current = null;
+    transferRequestedRef.current = false;
 
     const saveChallenge = async () => {
       setIsSavingChallenge(true);
@@ -294,6 +344,23 @@ export default function ArenaPage() {
 
     void saveChallenge();
   }, [address, fetchChallenges, isBurnSuccess]);
+
+  useEffect(() => {
+    if (!isApproveSuccess || !pendingChallengeRef.current) return;
+    if (transferRequestedRef.current) return;
+    const payload = pendingChallengeRef.current;
+    const stakeValue = Number(payload.stake);
+    if (!Number.isFinite(stakeValue) || stakeValue <= 0) return;
+    const amount = parseEther(stakeValue.toString());
+    transferRequestedRef.current = true;
+    void refetchAllowance();
+    writeContract({
+      address: LIFE_TOKEN_ADDRESS,
+      abi: LIFE_TOKEN_ABI,
+      functionName: "transfer",
+      args: [BURN_ADDRESS, amount]
+    });
+  }, [isApproveSuccess, refetchAllowance, writeContract]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -625,7 +692,7 @@ export default function ArenaPage() {
             ) : null}
             <button
               type="button"
-              disabled={!isChallengeValid || isBurning || isSavingChallenge}
+              disabled={!isChallengeValid || isBurning || isApproving || isSavingChallenge}
               onClick={handleCreateChallenge}
               className="mt-5 w-full rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-200 transition disabled:cursor-not-allowed disabled:opacity-50"
             >
