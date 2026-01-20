@@ -292,7 +292,7 @@ export default function ArenaPage() {
     if (!stakeWei) return;
     pendingChallengeRef.current = payload;
     transferRequestedRef.current = false;
-    const allowance = allowanceValue ?? 0n;
+    const allowance = allowanceValue ?? BigInt(0);
     if (allowance < stakeWei) {
       writeApproveContract({
         address: LIFE_TOKEN_ADDRESS,
