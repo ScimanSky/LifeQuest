@@ -132,6 +132,32 @@ function parseNumericInput(value: string) {
   return Number(cleaned);
 }
 
+function getTxErrorMessage(error: unknown) {
+  const message =
+    (error as { shortMessage?: string; message?: string })?.shortMessage ??
+    (error as { message?: string })?.message ??
+    "";
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("user rejected") || normalized.includes("denied")) {
+    return "Transazione rifiutata in MetaMask.";
+  }
+  if (normalized.includes("insufficient funds")) {
+    return "MATIC insufficiente per pagare il gas.";
+  }
+  if (normalized.includes("nonce too low")) {
+    return "Hai una transazione in attesa. Apri MetaMask e annulla o accelera.";
+  }
+  if (normalized.includes("replacement transaction underpriced")) {
+    return "Transazione già in corso. Attendi o accelera la precedente.";
+  }
+  if (normalized.includes("execution reverted")) {
+    return "Transazione rifiutata dal contratto. Controlla saldo LIFE o rete.";
+  }
+
+  return "Errore transazione. Riprova tra poco.";
+}
+
 export default function ArenaPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [challengeType, setChallengeType] = useState("Corsa");
@@ -307,7 +333,7 @@ export default function ArenaPage() {
       window.location.reload();
     } catch (error) {
       console.error("Errore Creazione:", error);
-      setSaveError("Transazione fallita o annullata.");
+      setSaveError(getTxErrorMessage(error));
       setIsApproving(false);
       setIsTransferring(false);
       setIsSavingChallenge(false);
