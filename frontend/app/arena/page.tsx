@@ -28,6 +28,7 @@ const CHALLENGE_DURATION_DAYS = 7;
 const LIFE_TOKEN_ADDRESS = (process.env.NEXT_PUBLIC_LIFE_TOKEN_ADDRESS ??
   process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ??
   "0x0000000000000000000000000000000000000000") as Address;
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
 const BURN_ADDRESS = "0x000000000000000000000000000000000000dEaD" as Address;
 const OWNER_ADDRESS = (process.env.NEXT_PUBLIC_OWNER_ADDRESS ??
   "0x0000000000000000000000000000000000000000") as Address;
@@ -265,9 +266,14 @@ export default function ArenaPage() {
       // 3. Trasferimento Blockchain (Semplificato: niente approve)
       setIsTransferring(true);
 
-      // NOTA: Qui stiamo inviando i token all'OWNER (l'Arena) invece che bruciarli,
-      // cosi puoi recuperarli durante i test. Se vuoi bruciarli, rimetti BURN_ADDRESS.
-      const destinationAddress = OWNER_ADDRESS;
+      // NOTA: inviamo all'OWNER se valido, altrimenti bruciamo per evitare revert.
+      const destinationAddress =
+        OWNER_ADDRESS && OWNER_ADDRESS !== ZERO_ADDRESS ? OWNER_ADDRESS : BURN_ADDRESS;
+      if (destinationAddress === ZERO_ADDRESS) {
+        setSaveError("Indirizzo di destinazione non valido.");
+        setIsTransferring(false);
+        return;
+      }
 
       const transferHash = await writeContractAsync({
         address: LIFE_TOKEN_ADDRESS,
