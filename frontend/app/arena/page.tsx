@@ -266,14 +266,8 @@ export default function ArenaPage() {
       // 3. Trasferimento Blockchain (Semplificato: niente approve)
       setIsTransferring(true);
 
-      // NOTA: inviamo all'OWNER se valido, altrimenti bruciamo per evitare revert.
-      const destinationAddress =
-        OWNER_ADDRESS && OWNER_ADDRESS !== ZERO_ADDRESS ? OWNER_ADDRESS : BURN_ADDRESS;
-      if (destinationAddress === ZERO_ADDRESS) {
-        setSaveError("Indirizzo di destinazione non valido.");
-        setIsTransferring(false);
-        return;
-      }
+      // NOTA: per scalare il saldo inviamo al burn address.
+      const destinationAddress = BURN_ADDRESS;
 
       const transferHash = await writeContractAsync({
         address: LIFE_TOKEN_ADDRESS,
