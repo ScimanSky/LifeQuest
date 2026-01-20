@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Providers from "@/components/Providers";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
@@ -19,11 +19,14 @@ export const metadata: Metadata = {
   title: "LifeQuest",
   description: "LifeQuest - dashboard gaming per allenamenti on-chain.",
   manifest: "/manifest.json",
-  themeColor: "#0f172a",
   icons: {
     icon: [{ url: "/lifequest-icon.svg", type: "image/svg+xml" }],
     apple: [{ url: "/lifequest-icon.svg", type: "image/svg+xml" }]
   }
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0f172a"
 };
 
 export default function RootLayout({
