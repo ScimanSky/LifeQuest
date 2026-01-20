@@ -1,4 +1,4 @@
-const CACHE_NAME = "lifequest-v2";
+const CACHE_NAME = "lifequest-v3";
 const CORE_ASSETS = ["/", "/manifest.json", "/lifequest-icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -19,6 +19,12 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;
+  const url = new URL(request.url);
+
+  if (request.method !== "GET") {
+    event.respondWith(fetch(request));
+    return;
+  }
 
   if (request.mode === "navigate") {
     event.respondWith(
@@ -30,6 +36,11 @@ self.addEventListener("fetch", (event) => {
         })
         .catch(() => caches.match(request).then((response) => response || caches.match("/")))
     );
+    return;
+  }
+
+  if (url.origin !== self.location.origin) {
+    event.respondWith(fetch(request));
     return;
   }
 
