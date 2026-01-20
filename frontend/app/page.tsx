@@ -6,7 +6,12 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Toaster, toast } from "react-hot-toast";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import {
+  useAccount,
+  useReadContract,
+  useWriteContract,
+  useWaitForTransactionReceipt
+} from "wagmi";
 import { formatEther, parseAbi, parseEther, type Address } from "viem";
 import {
   Trophy,
@@ -34,9 +39,12 @@ const BURN_ADDRESS = "0x000000000000000000000000000000000000dEaD" as Address;
 const LIFE_TOKEN_ADDRESS = (process.env.NEXT_PUBLIC_LIFE_TOKEN_ADDRESS ??
   process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ??
   "0x0000000000000000000000000000000000000000") as Address;
+const OWNER_ADDRESS = (process.env.NEXT_PUBLIC_OWNER_ADDRESS ??
+  "0x0000000000000000000000000000000000000000") as Address;
 const LIFE_TOKEN_ABI = parseAbi([
   "function balanceOf(address owner) view returns (uint256)",
-  "function transfer(address to, uint256 amount) returns (bool)"
+  "function transfer(address to, uint256 amount) returns (bool)",
+  "function mint(address to, uint256 amount)"
 ]);
 
 type ActivityItem = {
@@ -251,6 +259,9 @@ function HomeContent() {
   const isWalletConnected = isConnected;
   const isDisconnected = !isWalletConnected;
   const showStravaSync = isWalletConnected && !hasSyncedStrava;
+  const isOwner =
+    Boolean(address && OWNER_ADDRESS) &&
+    address?.toLowerCase() === OWNER_ADDRESS.toLowerCase();
   const { data: lifeBalance, refetch: refetchLifeBalance } = useReadContract({
     address: LIFE_TOKEN_ADDRESS,
     abi: LIFE_TOKEN_ABI,
@@ -265,11 +276,23 @@ function HomeContent() {
     isPending: isLevelUpPending,
     writeContract
   } = useWriteContract();
+  const {
+    data: mintTxHash,
+    isPending: isMintPending,
+    writeContract: writeMintContract
+  } = useWriteContract();
   const { isLoading: isLevelUpConfirming, isSuccess: isLevelUpSuccess } =
     useWaitForTransactionReceipt({
       hash: levelUpTxHash,
       query: {
         enabled: Boolean(levelUpTxHash)
+      }
+    });
+  const { isLoading: isMintConfirming, isSuccess: isMintSuccess } =
+    useWaitForTransactionReceipt({
+      hash: mintTxHash,
+      query: {
+        enabled: Boolean(mintTxHash)
       }
     });
   const lifeBalanceFormatted = useMemo(() => {
@@ -309,6 +332,11 @@ function HomeContent() {
         : !hasEnoughXp
           ? "XP insufficienti"
           : `Level Up (${LEVEL_UP_COST} LIFE)`;
+  const adminMintLabel = isMintPending
+    ? "Waiting validation..."
+    : isMintConfirming
+      ? "Conferma on-chain..."
+      : "Admin Mint";
 
   const handleLevelUp = useCallback(() => {
     if (!address || !canLevelUp || isLevelingUp) return;
@@ -319,6 +347,24 @@ function HomeContent() {
       args: [BURN_ADDRESS, parseEther(LEVEL_UP_COST.toString())]
     });
   }, [address, canLevelUp, isLevelingUp, writeContract]);
+
+  const isMinting = isMintPending || isMintConfirming;
+  const handleAdminMint = useCallback(() => {
+    if (!address || !isOwner || isMinting) return;
+    toast("Minting 1000 LIFE...", {
+      style: {
+        background: "#0f172a",
+        color: "#e2e8f0",
+        border: "1px solid rgba(148, 163, 184, 0.4)"
+      }
+    });
+    writeMintContract({
+      address: LIFE_TOKEN_ADDRESS,
+      abi: LIFE_TOKEN_ABI,
+      functionName: "mint",
+      args: [address, parseEther("1000")]
+    });
+  }, [address, isMinting, isOwner, writeMintContract]);
 
   const triggerConfettiBurst = useCallback((duration = 1800) => {
     setConfettiSeed((prev) => prev + 1);
@@ -817,6 +863,18 @@ function HomeContent() {
     }, 1600);
   }, [isLevelUpSuccess, refetchLifeBalance]);
 
+  useEffect(() => {
+    if (!isMintSuccess) return;
+    void refetchLifeBalance();
+    toast.success("Fatto!", {
+      style: {
+        background: "#0f172a",
+        color: "#e2e8f0",
+        border: "1px solid rgba(34, 211, 238, 0.4)"
+      }
+    });
+  }, [isMintSuccess, refetchLifeBalance]);
+
   const weeklySparkline = useMemo(() => {
     const days: string[] = [];
     const dayIndex = new Map<string, number>();
@@ -1159,6 +1217,16 @@ function HomeContent() {
                     Connetti il wallet per sincronizzare Strava.
                   </p>
                 )}
+                {isOwner ? (
+                  <button
+                    type="button"
+                    onClick={handleAdminMint}
+                    disabled={isMinting}
+                    className="self-end rounded-full border border-slate-700/70 bg-slate-950/60 px-3 py-1 text-[11px] font-semibold text-slate-300 transition hover:border-slate-500/70 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    ⚙️ {adminMintLabel}
+                  </button>
+                ) : null}
               </div>
             </div>
 
