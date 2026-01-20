@@ -1,0 +1,704 @@
+const express = require("express");
+const cors = require("cors");
+const axios = require("axios");
+const fs = require("fs");
+const path = require("path");
+const { ethers } = require("ethers");
+require("dotenv").config();
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+const REQUIRED_ENV = [
+  "STRAVA_CLIENT_ID",
+  "STRAVA_CLIENT_SECRET",
+  "POLYGON_RPC_URL",
+  "CONTRACT_ADDRESS",
+  "OWNER_PRIVATE_KEY"
+];
+
+const missing = REQUIRED_ENV.filter((key) => !process.env[key]);
+if (missing.length > 0) {
+  console.error(`Missing env vars: ${missing.join(", ")}`);
+  process.exit(1);
+}
+
+const PORT = process.env.PORT || 4000;
+const STRAVA_REDIRECT_URI =
+  process.env.STRAVA_REDIRECT_URI ||
+  `http://localhost:${PORT}/strava/callback`;
+const STRAVA_AFTER_TIMESTAMP = 1767225600;
+const STRAVA_PER_PAGE = 100;
+const IRON_PROTOCOL_TYPES = new Set([
+  "WeightTraining",
+  "Workout",
+  "Crossfit"
+]);
+const MINDFULNESS_TYPES = new Set(["Yoga", "Meditation", "Mindfulness"]);
+const MINDFULNESS_MIN_SECONDS = 600;
+const WEEKLY_GOALS = {
+  run: 2,
+  swim: 2,
+  iron: 3,
+  mindfulness: 2
+};
+
+const CONTRACT_ABI = [
+  "function mint(address to, uint256 amount)",
+  "function balanceOf(address account) view returns (uint256)"
+];
+const RECIPIENT_ADDRESS = "0x9ee32F0BE08F7A1B4E40e47A82a355a31aD5077C";
+const PAID_ACTIVITIES_PATH = path.join(__dirname, "paid_activities.json");
+const STRAVA_TOKEN_PATH = path.join(__dirname, "strava_tokens.json");
+const DATABASE_PATH = path.join(__dirname, "database.json");
+
+function loadPaidActivities() {
+  try {
+    if (!fs.existsSync(PAID_ACTIVITIES_PATH)) {
+      fs.writeFileSync(PAID_ACTIVITIES_PATH, "[]");
+      return [];
+    }
+
+    const raw = fs.readFileSync(PAID_ACTIVITIES_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    console.error("Errore lettura paid_activities.json:", err);
+    return [];
+  }
+}
+
+function savePaidActivities(activities) {
+  try {
+    fs.writeFileSync(
+      PAID_ACTIVITIES_PATH,
+      JSON.stringify(activities, null, 2)
+    );
+  } catch (err) {
+    console.error("Errore scrittura paid_activities.json:", err);
+  }
+}
+
+let paidActivitiesStore = loadPaidActivities();
+const paidActivities = new Set(paidActivitiesStore.map((activity) => activity.id));
+
+function refreshPaidActivities() {
+  paidActivitiesStore = loadPaidActivities();
+  paidActivities.clear();
+  for (const activity of paidActivitiesStore) {
+    paidActivities.add(activity.id);
+  }
+}
+
+function loadStravaTokens() {
+  try {
+    if (!fs.existsSync(STRAVA_TOKEN_PATH)) {
+      fs.writeFileSync(STRAVA_TOKEN_PATH, JSON.stringify({}, null, 2));
+      return {};
+    }
+
+    const raw = fs.readFileSync(STRAVA_TOKEN_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (err) {
+    console.error("Errore lettura strava_tokens.json:", err);
+    return {};
+  }
+}
+
+function saveStravaTokens(tokens) {
+  try {
+    fs.writeFileSync(STRAVA_TOKEN_PATH, JSON.stringify(tokens, null, 2));
+  } catch (err) {
+    console.error("Errore scrittura strava_tokens.json:", err);
+  }
+}
+
+function loadDatabase() {
+  try {
+    if (!fs.existsSync(DATABASE_PATH)) {
+      const initial = {
+        unlockedBadges: [],
+        badges: {
+          sonicBurst: false,
+          hydroMaster: false,
+          ironProtocol: false,
+          zenFocus: false
+        },
+        stats: {
+          gymSessions: 0,
+          zenSessions: 0
+        }
+      };
+      fs.writeFileSync(DATABASE_PATH, JSON.stringify(initial, null, 2));
+      return initial;
+    }
+
+    const raw = fs.readFileSync(DATABASE_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return { unlockedBadges: [] };
+    }
+    if (!Array.isArray(parsed.unlockedBadges)) {
+      parsed.unlockedBadges = [];
+    }
+    if (!Array.isArray(parsed.weeklyBonuses)) {
+      parsed.weeklyBonuses = [];
+    }
+    if (!parsed.badges || typeof parsed.badges !== "object") {
+      parsed.badges = {};
+    }
+    parsed.badges.sonicBurst = Boolean(parsed.badges.sonicBurst);
+    parsed.badges.hydroMaster = Boolean(parsed.badges.hydroMaster);
+    parsed.badges.ironProtocol = Boolean(parsed.badges.ironProtocol);
+    parsed.badges.zenFocus = Boolean(parsed.badges.zenFocus);
+    if (!parsed.stats || typeof parsed.stats !== "object") {
+      parsed.stats = {};
+    }
+    parsed.stats.gymSessions = Number(parsed.stats.gymSessions) || 0;
+    parsed.stats.zenSessions = Number(parsed.stats.zenSessions) || 0;
+    return parsed;
+  } catch (err) {
+    console.error("Errore lettura database.json:", err);
+    return {
+      unlockedBadges: [],
+      weeklyBonuses: [],
+      badges: {
+        sonicBurst: false,
+        hydroMaster: false,
+        ironProtocol: false,
+        zenFocus: false
+      },
+      stats: {
+        gymSessions: 0,
+        zenSessions: 0
+      }
+    };
+  }
+}
+
+function saveDatabase(data) {
+  try {
+    fs.writeFileSync(DATABASE_PATH, JSON.stringify(data, null, 2));
+  } catch (err) {
+    console.error("Errore scrittura database.json:", err);
+  }
+}
+
+function computeRank(balanceWei) {
+  const thresholds = {
+    neofita: ethers.parseUnits("1500", 18),
+    challenger: ethers.parseUnits("5000", 18),
+    elite: ethers.parseUnits("15000", 18)
+  };
+
+  if (balanceWei <= thresholds.neofita) {
+    return "NEOFITA (Lv 1-5)";
+  }
+  if (balanceWei <= thresholds.challenger) {
+    return "CHALLENGER (Lv 6-10)";
+  }
+  if (balanceWei <= thresholds.elite) {
+    return "ELITE (Lv 11-20)";
+  }
+  return "LEGEND (Lv 21+)";
+}
+
+function computeXpMissing(balanceWei) {
+  const tokenUnit = ethers.parseUnits("1", 18);
+  const balanceTokens = balanceWei / tokenUnit;
+  const xpPerLevel = 2000n;
+  const nextLevelXp = (balanceTokens / xpPerLevel + 1n) * xpPerLevel;
+  return nextLevelXp - balanceTokens;
+}
+
+function getWeekBounds(reference) {
+  const start = new Date(reference);
+  start.setHours(0, 0, 0, 0);
+  const day = start.getDay();
+  const diffToMonday = (day + 6) % 7;
+  start.setDate(start.getDate() - diffToMonday);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 7);
+  return { start, end };
+}
+
+function isValidRun(activity) {
+  return activity.type === "Run" && Number(activity.distance) > 1000;
+}
+
+function isValidSwim(activity) {
+  return activity.type === "Swim" && Number(activity.distance) > 250;
+}
+
+function isValidIron(activity) {
+  return IRON_PROTOCOL_TYPES.has(activity.type);
+}
+
+function isValidMindfulness(activity) {
+  return (
+    MINDFULNESS_TYPES.has(activity.type) &&
+    Number(activity.elapsed_time) > MINDFULNESS_MIN_SECONDS
+  );
+}
+
+function getActivityDate(activity) {
+  return activity.start_date || activity.start_date_local || activity.date;
+}
+
+function computeWeeklyGoalCounts(activities, reference) {
+  const { start, end } = getWeekBounds(reference);
+  const counts = {
+    run: 0,
+    swim: 0,
+    iron: 0,
+    mindfulness: 0
+  };
+
+  for (const activity of activities) {
+    if (!activity) continue;
+    const dateValue = getActivityDate(activity);
+    if (!dateValue) continue;
+    const timestamp = new Date(dateValue).getTime();
+    if (Number.isNaN(timestamp)) continue;
+    if (timestamp < start.getTime() || timestamp >= end.getTime()) {
+      continue;
+    }
+
+    if (isValidRun(activity)) counts.run += 1;
+    if (isValidSwim(activity)) counts.swim += 1;
+    if (isValidIron(activity)) counts.iron += 1;
+    if (isValidMindfulness(activity)) counts.mindfulness += 1;
+  }
+
+  return counts;
+}
+
+function checkPerfectWeekBonus(activities, db) {
+  const now = new Date();
+  const { start } = getWeekBounds(now);
+  const weekKey = start.toISOString().split("T")[0];
+  const counts = computeWeeklyGoalCounts(activities, now);
+  const completed = {
+    run: counts.run >= WEEKLY_GOALS.run,
+    swim: counts.swim >= WEEKLY_GOALS.swim,
+    iron: counts.iron >= WEEKLY_GOALS.iron,
+    mindfulness: counts.mindfulness >= WEEKLY_GOALS.mindfulness
+  };
+  const completedCount = Object.values(completed).filter(Boolean).length;
+
+  const bonuses = Array.isArray(db.weeklyBonuses) ? db.weeklyBonuses : [];
+  const alreadyAwarded = bonuses.some((bonus) => bonus.weekStart === weekKey);
+  let bonusReward = 0;
+
+  if (completedCount === 4 && !alreadyAwarded) {
+    bonusReward = 200;
+    bonuses.push({
+      weekStart: weekKey,
+      reward: bonusReward,
+      label: "Bonus Settimana Perfetta",
+      awardedAt: new Date().toISOString()
+    });
+    db.weeklyBonuses = bonuses;
+    saveDatabase(db);
+  }
+
+  return {
+    bonusReward,
+    completedCount,
+    counts
+  };
+}
+
+function computeBadgeStats(activities, stats = {}) {
+  let totalRunDistanceMeters = 0;
+  let swimSessions = 0;
+  let gymSessions = 0;
+
+  for (const activity of activities) {
+    if (!activity || !activity.type) {
+      continue;
+    }
+
+    const distance = Number(activity.distance) || 0;
+
+    if (activity.type === "Run") {
+      totalRunDistanceMeters += distance;
+    }
+
+    if (activity.type === "Swim") {
+      swimSessions += 1;
+    }
+
+    if (
+      IRON_PROTOCOL_TYPES.has(activity.type) &&
+      Number(activity.elapsed_time) > 1800
+    ) {
+      gymSessions += 1;
+    }
+  }
+
+  return {
+    totalRunDistanceKm: totalRunDistanceMeters / 1000,
+    swimSessions,
+    gymSessions: Math.max(Number(stats.gymSessions) || 0, gymSessions),
+    zenSessions: Number(stats.zenSessions) || 0
+  };
+}
+
+function checkBadgeUnlock(stats, db) {
+  const badges = {
+    sonicBurst: false,
+    hydroMaster: false,
+    ironProtocol: false,
+    zenFocus: false,
+    ...(db.badges || {})
+  };
+
+  if (stats.totalRunDistanceKm >= 50) {
+    badges.sonicBurst = true;
+  }
+  if (stats.swimSessions >= 10) {
+    badges.hydroMaster = true;
+  }
+  if (stats.gymSessions >= 5) {
+    badges.ironProtocol = true;
+  }
+  if (stats.zenSessions >= 5) {
+    badges.zenFocus = true;
+  }
+
+  db.badges = badges;
+  saveDatabase(db);
+  return badges;
+}
+
+async function fetchBalance() {
+  const provider = new ethers.JsonRpcProvider(process.env.POLYGON_RPC_URL);
+  const contract = new ethers.Contract(
+    process.env.CONTRACT_ADDRESS,
+    CONTRACT_ABI,
+    provider
+  );
+  return contract.balanceOf(RECIPIENT_ADDRESS);
+}
+
+async function fetchRecentActivities(accessToken) {
+  const activities = [];
+  let page = 1;
+
+  while (true) {
+    const response = await axios.get(
+      "https://www.strava.com/api/v3/athlete/activities",
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        },
+        params: {
+          per_page: STRAVA_PER_PAGE,
+          page,
+          after: STRAVA_AFTER_TIMESTAMP
+        }
+      }
+    );
+
+    const data = Array.isArray(response.data) ? response.data : [];
+    if (data.length === 0) {
+      break;
+    }
+
+    activities.push(...data);
+    if (data.length < STRAVA_PER_PAGE) {
+      break;
+    }
+    page += 1;
+  }
+
+  return activities;
+}
+
+function evaluateActivities(activities) {
+  const pendingActivities = [];
+  let totalReward = 0;
+
+  for (const activity of activities) {
+    if (!activity || !activity.id || paidActivities.has(activity.id)) {
+      continue;
+    }
+
+    const distanceMeters = activity.distance || 0;
+    const elapsedTime = Number(activity.elapsed_time) || 0;
+    let reward = 0;
+    let mappedType = activity.type;
+    let mappedIcon;
+
+    if (isValidRun(activity)) {
+      reward = 50;
+    }
+
+    if (isValidSwim(activity)) {
+      reward = 40;
+    }
+
+    if (isValidIron(activity)) {
+      reward = 30;
+      mappedType = "Iron Protocol";
+      mappedIcon = "🏋️";
+    }
+
+    if (reward === 0) {
+      continue;
+    }
+
+    pendingActivities.push({
+      id: activity.id,
+      type: mappedType,
+      icon: mappedIcon,
+      distance: distanceMeters,
+      duration: elapsedTime,
+      reward,
+      date: activity.start_date || activity.start_date_local || new Date().toISOString()
+    });
+    totalReward += reward;
+  }
+
+  return { pendingActivities, totalReward };
+}
+
+async function mintReward(totalReward) {
+  const provider = new ethers.JsonRpcProvider(process.env.POLYGON_RPC_URL);
+  const wallet = new ethers.Wallet(process.env.OWNER_PRIVATE_KEY, provider);
+  const contract = new ethers.Contract(
+    process.env.CONTRACT_ADDRESS,
+    CONTRACT_ABI,
+    wallet
+  );
+
+  const tx = await contract.mint(
+    RECIPIENT_ADDRESS,
+    ethers.parseUnits(totalReward.toString(), 18),
+    { gasLimit: 200000n }
+  );
+  return tx.wait();
+}
+
+function buildStravaAuthUrl() {
+  const params = new URLSearchParams({
+    client_id: process.env.STRAVA_CLIENT_ID,
+    redirect_uri: STRAVA_REDIRECT_URI,
+    response_type: "code",
+    scope: "activity:read_all",
+    approval_prompt: "auto"
+  });
+
+  return `https://www.strava.com/oauth/authorize?${params.toString()}`;
+}
+
+app.get("/strava/auth", (_req, res) => {
+  const url = buildStravaAuthUrl();
+  res.redirect(url);
+});
+
+app.get("/activities", (_req, res) => {
+  paidActivitiesStore = loadPaidActivities();
+  paidActivities.clear();
+  for (const activity of paidActivitiesStore) {
+    paidActivities.add(activity.id);
+  }
+  return res.json(paidActivitiesStore);
+});
+
+app.get("/user/stats", async (_req, res) => {
+  try {
+    const balanceWei = await fetchBalance();
+    const rank = computeRank(balanceWei);
+    const xpMissing = computeXpMissing(balanceWei);
+
+    const db = loadDatabase();
+    const unlockedBadges = Array.isArray(db.unlockedBadges)
+      ? db.unlockedBadges
+      : [];
+    const badges = db.badges && typeof db.badges === "object" ? db.badges : {};
+
+    const ignitionUnlocked = balanceWei > ethers.parseUnits("1500", 18);
+    if (ignitionUnlocked) {
+      const exists = unlockedBadges.some((badge) => badge.id === "ignition");
+      if (!exists) {
+        unlockedBadges.push({
+          id: "ignition",
+          name: "The Ignition",
+          icon: "zap"
+        });
+        db.unlockedBadges = unlockedBadges;
+        saveDatabase(db);
+      }
+    }
+
+    return res.json({
+      balance: ethers.formatUnits(balanceWei, 18),
+      rank,
+      xpMissing: xpMissing.toString(),
+      unlockedBadges,
+      badges
+    });
+  } catch (err) {
+    console.error("User stats error:", err);
+    return res.status(500).json({ error: "Errore interno" });
+  }
+});
+
+app.post("/strava/sync", async (_req, res) => {
+  try {
+    refreshPaidActivities();
+    const tokens = loadStravaTokens();
+    if (!tokens.refresh_token) {
+      return res.status(400).json({
+        status: "needs_auth",
+        message: "Autorizzazione Strava mancante"
+      });
+    }
+
+    const refreshResponse = await axios.post(
+      "https://www.strava.com/oauth/token",
+      new URLSearchParams({
+        client_id: process.env.STRAVA_CLIENT_ID,
+        client_secret: process.env.STRAVA_CLIENT_SECRET,
+        grant_type: "refresh_token",
+        refresh_token: tokens.refresh_token
+      }).toString(),
+      {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded"
+        }
+      }
+    );
+
+    const accessToken = refreshResponse.data?.access_token;
+    const refreshToken = refreshResponse.data?.refresh_token;
+    if (!accessToken) {
+      return res.status(502).json({ status: "error", message: "Token Strava non valido" });
+    }
+
+    if (refreshToken && refreshToken !== tokens.refresh_token) {
+      saveStravaTokens({
+        ...tokens,
+        refresh_token: refreshToken,
+        updated_at: new Date().toISOString()
+      });
+    }
+
+    const activities = await fetchRecentActivities(accessToken);
+    const db = loadDatabase();
+    const perfectWeek = checkPerfectWeekBonus(activities, db);
+
+    const { pendingActivities, totalReward } = evaluateActivities(activities);
+    const totalRewardWithBonus = totalReward + perfectWeek.bonusReward;
+    if (totalRewardWithBonus === 0) {
+      checkBadgeUnlock(computeBadgeStats(activities, db.stats), db);
+      return res.json({
+        status: "no_new_activities",
+        totalReward: 0,
+        activities: paidActivitiesStore,
+        perfectWeekProgress: perfectWeek.completedCount
+      });
+    }
+
+    await mintReward(totalRewardWithBonus);
+
+    paidActivitiesStore = paidActivitiesStore.concat(pendingActivities);
+    for (const activity of pendingActivities) {
+      paidActivities.add(activity.id);
+    }
+    savePaidActivities(paidActivitiesStore);
+
+    checkBadgeUnlock(computeBadgeStats(activities, db.stats), db);
+
+    return res.json({
+      status: "minted",
+      totalReward: totalRewardWithBonus,
+      perfectWeekBonus: perfectWeek.bonusReward,
+      perfectWeekProgress: perfectWeek.completedCount,
+      validCount: pendingActivities.length,
+      activities: paidActivitiesStore
+    });
+  } catch (err) {
+    console.error("Strava sync error:", err);
+    return res.status(500).json({ status: "error", message: "Errore interno" });
+  }
+});
+
+app.get("/strava/callback", async (req, res) => {
+  try {
+    refreshPaidActivities();
+    const { code, error } = req.query;
+
+    if (error) {
+      return res.status(400).json({ error });
+    }
+
+    if (!code || typeof code !== "string") {
+      return res.status(400).json({ error: "Missing authorization code" });
+    }
+
+    const tokenResponse = await axios.post(
+      "https://www.strava.com/oauth/token",
+      new URLSearchParams({
+        client_id: process.env.STRAVA_CLIENT_ID,
+        client_secret: process.env.STRAVA_CLIENT_SECRET,
+        code,
+        grant_type: "authorization_code"
+      }).toString(),
+      {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded"
+        }
+      }
+    );
+
+    const accessToken = tokenResponse.data?.access_token;
+    const refreshToken = tokenResponse.data?.refresh_token;
+    if (!accessToken) {
+      return res.status(502).json({ error: "No access token from Strava" });
+    }
+    if (refreshToken) {
+      saveStravaTokens({
+        refresh_token: refreshToken,
+        athlete_id: tokenResponse.data?.athlete?.id,
+        updated_at: new Date().toISOString()
+      });
+    }
+
+    const activities = await fetchRecentActivities(accessToken);
+    const db = loadDatabase();
+    const perfectWeek = checkPerfectWeekBonus(activities, db);
+
+    const { pendingActivities, totalReward } = evaluateActivities(activities);
+    const totalRewardWithBonus = totalReward + perfectWeek.bonusReward;
+
+    if (totalRewardWithBonus === 0) {
+      checkBadgeUnlock(computeBadgeStats(activities, db.stats), db);
+      return res.redirect("http://localhost:3000/?no_new_activities=true");
+    }
+
+    await mintReward(totalRewardWithBonus);
+
+    paidActivitiesStore = paidActivitiesStore.concat(pendingActivities);
+    for (const activity of pendingActivities) {
+      paidActivities.add(activity.id);
+    }
+    savePaidActivities(paidActivitiesStore);
+
+    checkBadgeUnlock(computeBadgeStats(activities, db.stats), db);
+
+    return res.redirect("http://localhost:3000/?minted=true");
+  } catch (err) {
+    console.error("Strava callback error:", err);
+    return res.status(500).json({ error: "Errore interno" });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`Server avviato su http://localhost:${PORT}`);
+  console.log(`Strava redirect URI: ${STRAVA_REDIRECT_URI}`);
+});

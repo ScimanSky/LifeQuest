@@ -1,0 +1,20 @@
+{
+  "unlockedBadges": [
+    {
+      "id": "ignition",
+      "name": "The Ignition",
+      "icon": "zap"
+    }
+  ],
+  "weeklyBonuses": [],
+  "badges": {
+    "sonicBurst": false,
+    "hydroMaster": false,
+    "ironProtocol": false,
+    "zenFocus": false
+  },
+  "stats": {
+    "gymSessions": 0,
+    "zenSessions": 0
+  }
+}
