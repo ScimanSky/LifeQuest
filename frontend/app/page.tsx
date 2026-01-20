@@ -6,8 +6,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Toaster, toast } from "react-hot-toast";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount, useReadContract } from "wagmi";
-import { formatEther, parseAbi, type Address } from "viem";
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { formatEther, parseAbi, parseEther, type Address } from "viem";
 import {
   Trophy,
   Activity,
@@ -29,11 +29,14 @@ const USER_STATS_URL = `${BACKEND_BASE_URL}/user/stats`;
 const SEEN_BADGES_KEY = "lifequest:seen-badges";
 const STRAVA_SYNCED_KEY = "lifequest:strava-synced";
 const ACTIVITIES_PREVIEW_LIMIT = 6;
+const LEVEL_UP_COST = 500;
+const BURN_ADDRESS = "0x000000000000000000000000000000000000dEaD" as Address;
 const LIFE_TOKEN_ADDRESS = (process.env.NEXT_PUBLIC_LIFE_TOKEN_ADDRESS ??
   process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ??
   "0x0000000000000000000000000000000000000000") as Address;
 const LIFE_TOKEN_ABI = parseAbi([
-  "function balanceOf(address owner) view returns (uint256)"
+  "function balanceOf(address owner) view returns (uint256)",
+  "function transfer(address to, uint256 amount) returns (bool)"
 ]);
 
 type ActivityItem = {
@@ -222,6 +225,7 @@ function HomeContent() {
   >(null);
   const [showAllActivities, setShowAllActivities] = useState(false);
   const [isWalletCollapsed, setIsWalletCollapsed] = useState(false);
+  const [currentLevel, setCurrentLevel] = useState(CURRENT_LEVEL);
   const [userStats, setUserStats] = useState<UserStats | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const [confettiSeed, setConfettiSeed] = useState(0);
@@ -238,7 +242,7 @@ function HomeContent() {
   const isWalletConnected = isConnected;
   const isDisconnected = !isWalletConnected;
   const showStravaSync = isWalletConnected && !hasSyncedStrava;
-  const { data: lifeBalance } = useReadContract({
+  const { data: lifeBalance, refetch: refetchLifeBalance } = useReadContract({
     address: LIFE_TOKEN_ADDRESS,
     abi: LIFE_TOKEN_ABI,
     functionName: "balanceOf",
@@ -247,6 +251,18 @@ function HomeContent() {
       enabled: Boolean(address)
     }
   });
+  const {
+    data: levelUpTxHash,
+    isPending: isLevelUpPending,
+    writeContract
+  } = useWriteContract();
+  const { isLoading: isLevelUpConfirming, isSuccess: isLevelUpSuccess } =
+    useWaitForTransactionReceipt({
+      hash: levelUpTxHash,
+      query: {
+        enabled: Boolean(levelUpTxHash)
+      }
+    });
   const lifeBalanceFormatted = useMemo(() => {
     if (!address || lifeBalance === undefined) return "—";
     return formatEther(lifeBalance);
@@ -265,6 +281,25 @@ function HomeContent() {
     },
     [lifeBalanceValue]
   );
+  const canLevelUp =
+    Boolean(isWalletConnected && lifeBalanceValue !== null) &&
+    (lifeBalanceValue as number) >= LEVEL_UP_COST;
+  const isLevelingUp = isLevelUpPending || isLevelUpConfirming;
+  const levelUpLabel = isLevelUpPending
+    ? "Waiting validation..."
+    : isLevelUpConfirming
+      ? "Conferma on-chain..."
+      : `Level Up (${LEVEL_UP_COST} LIFE)`;
+
+  const handleLevelUp = useCallback(() => {
+    if (!address || !canLevelUp || isLevelingUp) return;
+    writeContract({
+      address: LIFE_TOKEN_ADDRESS,
+      abi: LIFE_TOKEN_ABI,
+      functionName: "transfer",
+      args: [BURN_ADDRESS, parseEther(LEVEL_UP_COST.toString())]
+    });
+  }, [address, canLevelUp, isLevelingUp, writeContract]);
 
   const triggerConfettiBurst = useCallback((duration = 1800) => {
     setConfettiSeed((prev) => prev + 1);
@@ -739,6 +774,19 @@ function HomeContent() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!isLevelUpSuccess) return;
+    setCurrentLevel((prev) => prev + 1);
+    void refetchLifeBalance();
+    toast.success("Level Up!", {
+      style: {
+        background: "#0f172a",
+        color: "#e2e8f0",
+        border: "1px solid rgba(34, 211, 238, 0.4)"
+      }
+    });
+  }, [isLevelUpSuccess, refetchLifeBalance]);
+
   const weeklySparkline = useMemo(() => {
     const days: string[] = [];
     const dayIndex = new Map<string, number>();
@@ -1082,7 +1130,7 @@ function HomeContent() {
                   <p className="text-xs uppercase tracking-[0.3em] text-cyan-300">Livello</p>
                   <div className="mt-2 flex items-center justify-between gap-3">
                     <h2 className="text-xl font-semibold text-white">
-                      Livello <span className="font-mono">{CURRENT_LEVEL}</span>
+                      Livello <span className="font-mono">{currentLevel}</span>
                     </h2>
                     <span className="rounded-full border border-white/10 bg-slate-900/60 px-3 py-1 text-[11px] font-semibold text-slate-200">
                       {userStats?.rank ?? "—"}
@@ -1109,6 +1157,16 @@ function HomeContent() {
                     </span>
                     <span className="font-mono">{LEVEL_PROGRESS}%</span>
                   </div>
+                  {canLevelUp ? (
+                    <button
+                      type="button"
+                      onClick={handleLevelUp}
+                      disabled={isLevelingUp}
+                      className="mt-4 flex w-full items-center justify-center rounded-xl border border-cyan-400/50 bg-cyan-500/10 px-4 py-3 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/70 hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {levelUpLabel}
+                    </button>
+                  ) : null}
 
                   <div className="mt-4 flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/60 p-3 transition-all duration-500">
                     <div
