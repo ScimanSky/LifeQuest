@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -11,8 +11,8 @@ import {
   UserPlus,
   X
 } from "lucide-react";
-import { useAccount, useReadContract } from "wagmi";
-import { formatEther, parseAbi, type Address } from "viem";
+import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { formatEther, parseAbi, parseEther, type Address } from "viem";
 
 const rivals = [
   { id: "neo", name: "Neo", level: 7 },
@@ -52,9 +52,12 @@ const duels = [
 const LIFE_TOKEN_ADDRESS = (process.env.NEXT_PUBLIC_LIFE_TOKEN_ADDRESS ??
   process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ??
   "0x0000000000000000000000000000000000000000") as Address;
+const BURN_ADDRESS = "0x000000000000000000000000000000000000dEaD" as Address;
 const LIFE_TOKEN_ABI = parseAbi([
-  "function balanceOf(address owner) view returns (uint256)"
+  "function balanceOf(address owner) view returns (uint256)",
+  "function transfer(address to, uint256 amount) returns (bool)"
 ]);
+const ARENA_STORAGE_KEY = "lifequest:arena-duels";
 
 function progressPercent(current: number, total: number) {
   if (!total) return 0;
@@ -69,6 +72,20 @@ export default function ArenaPage() {
   const [challengeRival, setChallengeRival] = useState(rivals[0]?.name ?? "");
   const [draftDuels, setDraftDuels] = useState<typeof duels>([]);
   const { address, isConnected } = useAccount();
+  const {
+    data: burnTxHash,
+    isPending: isBurnPending,
+    writeContract
+  } = useWriteContract();
+  const {
+    isLoading: isBurnConfirming,
+    isSuccess: isBurnSuccess
+  } = useWaitForTransactionReceipt({
+    hash: burnTxHash,
+    query: {
+      enabled: Boolean(burnTxHash)
+    }
+  });
   const { data: lifeBalance } = useReadContract({
     address: LIFE_TOKEN_ADDRESS,
     abi: LIFE_TOKEN_ABI,
@@ -87,6 +104,32 @@ export default function ArenaPage() {
     const parsed = Number(formatEther(lifeBalance));
     return Number.isFinite(parsed) ? parsed : null;
   }, [address, lifeBalance]);
+  const pendingChallengeRef = useRef<{
+    type: string;
+    goal: string;
+    stake: number;
+    rival: string;
+    unit: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem(ARENA_STORAGE_KEY);
+    if (!stored) return;
+    try {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        setDraftDuels(parsed);
+      }
+    } catch {
+      // Ignore malformed storage.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(ARENA_STORAGE_KEY, JSON.stringify(draftDuels));
+  }, [draftDuels]);
 
   const challengeConfig = useMemo(() => {
     if (challengeType === "Nuoto") {
@@ -119,6 +162,12 @@ export default function ArenaPage() {
       stakeValue <= lifeBalanceValue
     );
   }, [challengeGoal, challengeRival, isConnected, lifeBalanceValue, stakeValue]);
+  const isBurning = isBurnPending || isBurnConfirming;
+  const createLabel = isBurnPending
+    ? "Waiting validation..."
+    : isBurnConfirming
+      ? "Conferma on-chain..."
+      : "Crea Sfida";
 
   const handleCreateChallenge = () => {
     if (!isChallengeValid) return;
@@ -127,27 +176,38 @@ export default function ArenaPage() {
       type: challengeType,
       goal: challengeGoal.trim(),
       stake: stakeValue,
-      rival: challengeRival
+      rival: challengeRival,
+      unit: challengeConfig.unit
     };
-    console.log("Arena challenge payload", payload);
+    pendingChallengeRef.current = payload;
+    writeContract({
+      address: LIFE_TOKEN_ADDRESS,
+      abi: LIFE_TOKEN_ABI,
+      functionName: "transfer",
+      args: [BURN_ADDRESS, parseEther(payload.stake.toString())]
+    });
+  };
 
-    const id = `${challengeType}-${Date.now()}`;
+  useEffect(() => {
+    if (!isBurnSuccess || !pendingChallengeRef.current) return;
+    const payload = pendingChallengeRef.current;
+    const id = `${payload.type}-${Date.now()}`;
     setDraftDuels((prev) => [
       {
         id,
-        title: `${challengeType} ${challengeGoal.trim()} ${challengeConfig.unit}`,
-        you: { name: "Tu", progress: 0, total: Number(challengeGoal) || 1 },
-        rival: { name: challengeRival, progress: 0, total: Number(challengeGoal) || 1 },
+        title: `${payload.type} ${payload.goal} ${payload.unit}`,
+        you: { name: "Tu", progress: 0, total: Number(payload.goal) || 1 },
+        rival: { name: payload.rival, progress: 0, total: Number(payload.goal) || 1 },
         timeLeft: "7 giorni",
         stake: `${payload.stake} LIFE`
       },
       ...prev
     ]);
-
+    pendingChallengeRef.current = null;
     setIsModalOpen(false);
     setChallengeGoal("");
     setChallengeStake("");
-  };
+  }, [isBurnSuccess]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -417,11 +477,11 @@ export default function ArenaPage() {
             </div>
             <button
               type="button"
-              disabled={!isChallengeValid}
+              disabled={!isChallengeValid || isBurning}
               onClick={handleCreateChallenge}
               className="mt-5 w-full rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-200 transition disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Crea Sfida
+              {createLabel}
             </button>
           </div>
         </div>
