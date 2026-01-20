@@ -233,6 +233,7 @@ function HomeContent() {
   const [showAllActivities, setShowAllActivities] = useState(false);
   const [isWalletCollapsed, setIsWalletCollapsed] = useState(false);
   const [currentLevel, setCurrentLevel] = useState(CURRENT_LEVEL);
+  const [showLevelUpGlow, setShowLevelUpGlow] = useState(false);
   const [userStats, setUserStats] = useState<UserStats | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const [confettiSeed, setConfettiSeed] = useState(0);
@@ -243,6 +244,7 @@ function HomeContent() {
   const [showPerfectWeekFlash, setShowPerfectWeekFlash] = useState(false);
   const perfectWeekFlashTimerRef = useRef<number | null>(null);
   const perfectWeekPrevRef = useRef<boolean | null>(null);
+  const levelUpGlowTimerRef = useRef<number | null>(null);
   const searchParams = useSearchParams();
   const { address, isConnected } = useAccount();
   const walletAddress = address ?? null;
@@ -292,15 +294,21 @@ function HomeContent() {
     () => getRankByLevel(currentLevel),
     [currentLevel]
   );
-  const canLevelUp =
+  const hasEnoughBalance =
     Boolean(isWalletConnected && lifeBalanceValue !== null) &&
     (lifeBalanceValue as number) >= LEVEL_UP_COST;
+  const hasEnoughXp = CURRENT_XP >= NEXT_LEVEL_XP;
+  const canLevelUp = Boolean(isWalletConnected && hasEnoughBalance && hasEnoughXp);
   const isLevelingUp = isLevelUpPending || isLevelUpConfirming;
   const levelUpLabel = isLevelUpPending
     ? "Waiting validation..."
     : isLevelUpConfirming
       ? "Conferma on-chain..."
-      : `Level Up (${LEVEL_UP_COST} LIFE)`;
+      : !hasEnoughBalance
+        ? "Saldo insufficiente"
+        : !hasEnoughXp
+          ? "XP insufficienti"
+          : `Level Up (${LEVEL_UP_COST} LIFE)`;
 
   const handleLevelUp = useCallback(() => {
     if (!address || !canLevelUp || isLevelingUp) return;
@@ -489,6 +497,9 @@ function HomeContent() {
       }
       if (perfectWeekFlashTimerRef.current) {
         window.clearTimeout(perfectWeekFlashTimerRef.current);
+      }
+      if (levelUpGlowTimerRef.current) {
+        window.clearTimeout(levelUpGlowTimerRef.current);
       }
     };
   }, []);
@@ -788,6 +799,8 @@ function HomeContent() {
   useEffect(() => {
     if (!isLevelUpSuccess) return;
     setCurrentLevel((prev) => prev + 1);
+    triggerConfettiBurst(1800);
+    setShowLevelUpGlow(true);
     void refetchLifeBalance();
     toast.success("Level Up!", {
       style: {
@@ -796,6 +809,12 @@ function HomeContent() {
         border: "1px solid rgba(34, 211, 238, 0.4)"
       }
     });
+    if (levelUpGlowTimerRef.current) {
+      window.clearTimeout(levelUpGlowTimerRef.current);
+    }
+    levelUpGlowTimerRef.current = window.setTimeout(() => {
+      setShowLevelUpGlow(false);
+    }, 1600);
   }, [isLevelUpSuccess, refetchLifeBalance]);
 
   const weeklySparkline = useMemo(() => {
@@ -1137,7 +1156,13 @@ function HomeContent() {
 
             {isWalletConnected ? (
               <>
-                <div className="rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-4 transition-all duration-500">
+                <div
+                  className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-4 transition-all duration-500 ${
+                    showLevelUpGlow
+                      ? "ring-2 ring-amber-400/60 shadow-[0_0_30px_rgba(251,191,36,0.4)]"
+                      : ""
+                  }`}
+                >
                   <p className="text-xs uppercase tracking-[0.3em] text-cyan-300">Livello</p>
                   <div className="mt-2 flex items-center justify-between gap-3">
                     <h2 className="text-xl font-semibold text-white">
@@ -1168,12 +1193,16 @@ function HomeContent() {
                     </span>
                     <span className="font-mono">{LEVEL_PROGRESS}%</span>
                   </div>
-                  {canLevelUp ? (
+                  {isWalletConnected ? (
                     <button
                       type="button"
                       onClick={handleLevelUp}
-                      disabled={isLevelingUp}
-                      className="mt-4 flex w-full items-center justify-center rounded-xl border border-cyan-400/50 bg-cyan-500/10 px-4 py-3 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/70 hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={!canLevelUp || isLevelingUp}
+                      className={`mt-4 flex w-full items-center justify-center rounded-xl px-4 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                        canLevelUp && !isLevelingUp
+                          ? "border border-cyan-400/50 bg-cyan-500/10 text-cyan-100 hover:border-cyan-300/70 hover:text-cyan-50"
+                          : "border border-slate-700/70 bg-slate-900/60 text-slate-400"
+                      }`}
                     >
                       {levelUpLabel}
                     </button>
