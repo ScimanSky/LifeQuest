@@ -132,6 +132,16 @@ function saveStravaTokens(tokens) {
   }
 }
 
+function removeWalletTokens(tokensStore, wallet) {
+  if (!tokensStore.wallets || !tokensStore.wallets[wallet]) return false;
+  const athleteId = tokensStore.wallets[wallet]?.athlete_id;
+  delete tokensStore.wallets[wallet];
+  if (athleteId && tokensStore.athleteToWallet?.[athleteId] === wallet) {
+    delete tokensStore.athleteToWallet[athleteId];
+  }
+  return true;
+}
+
 function loadDatabase() {
   try {
     if (!fs.existsSync(DATABASE_PATH)) {
@@ -522,6 +532,19 @@ app.get("/strava/auth", (req, res) => {
   }
   const url = buildStravaAuthUrl(wallet);
   return res.redirect(url);
+});
+
+app.post("/strava/disconnect", (req, res) => {
+  const wallet = normalizeWallet(req.body?.walletAddress || req.query?.wallet);
+  if (!wallet) {
+    return res.status(400).json({ status: "error", message: "Wallet non valido" });
+  }
+  const tokensStore = loadStravaTokens();
+  const removed = removeWalletTokens(tokensStore, wallet);
+  if (removed) {
+    saveStravaTokens(tokensStore);
+  }
+  return res.json({ status: removed ? "disconnected" : "not_connected" });
 });
 
 app.get("/activities", (_req, res) => {

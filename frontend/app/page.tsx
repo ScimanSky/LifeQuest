@@ -29,6 +29,7 @@ import {
 const BACKEND_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 const STRAVA_AUTH_URL = `${BACKEND_BASE_URL}/strava/auth`;
 const STRAVA_SYNC_URL = `${BACKEND_BASE_URL}/strava/sync`;
+const STRAVA_DISCONNECT_URL = `${BACKEND_BASE_URL}/strava/disconnect`;
 const ACTIVITIES_URL = `${BACKEND_BASE_URL}/activities`;
 const USER_STATS_URL = `${BACKEND_BASE_URL}/user/stats`;
 const SEEN_BADGES_KEY = "lifequest:seen-badges";
@@ -427,6 +428,21 @@ function HomeContent() {
     window.localStorage.setItem(key, "true");
   };
 
+  const disconnectStravaForWallet = async (wallet?: string | null) => {
+    if (!wallet) return;
+    try {
+      await fetch(STRAVA_DISCONNECT_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ walletAddress: wallet })
+      });
+    } catch {
+      // Best-effort cleanup; ignore failures.
+    }
+  };
+
   const refreshStats = async () => {
     try {
       const response = await fetch(USER_STATS_URL);
@@ -482,10 +498,12 @@ function HomeContent() {
         window.localStorage.removeItem(`${STRAVA_SYNCED_KEY}:${nextWallet}`);
       }
       window.localStorage.removeItem(STRAVA_SYNCED_KEY);
+      void disconnectStravaForWallet(prevWallet);
     }
     if (!nextWallet && prevWallet) {
       window.localStorage.removeItem(`${STRAVA_SYNCED_KEY}:${prevWallet}`);
       window.localStorage.removeItem(STRAVA_SYNCED_KEY);
+      void disconnectStravaForWallet(prevWallet);
     }
     previousWalletRef.current = nextWallet;
   }, [walletAddress]);
