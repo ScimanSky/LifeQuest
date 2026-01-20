@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { formatEther, parseAbi, parseEther, type Address } from "viem";
+import { supabase } from "../../utils/supabase";
 
 const rivals = [
   { id: "neo", name: "Neo", level: 7 },
@@ -22,35 +23,7 @@ const rivals = [
   { id: "sable", name: "Sable", level: 6 }
 ];
 
-const duels = [
-  {
-    id: "run-20",
-    title: "Corsa 20km",
-    type: "Corsa",
-    you: { name: "Tu", progress: 12, total: 20 },
-    rival: { name: "Mira", progress: 15, total: 20 },
-    timeLeft: "2 giorni",
-    stake: "50 LIFE"
-  },
-  {
-    id: "swim-8",
-    title: "Nuoto 8km",
-    type: "Nuoto",
-    you: { name: "Tu", progress: 3.4, total: 8 },
-    rival: { name: "Vex", progress: 2.8, total: 8 },
-    timeLeft: "18 ore",
-    stake: "30 LIFE"
-  },
-  {
-    id: "gym-6",
-    title: "Palestra 6 sessioni",
-    type: "Palestra",
-    you: { name: "Tu", progress: 4, total: 6 },
-    rival: { name: "Neo", progress: 5, total: 6 },
-    timeLeft: "4 giorni",
-    stake: "70 LIFE"
-  }
-];
+const CHALLENGE_DURATION_DAYS = 7;
 
 const LIFE_TOKEN_ADDRESS = (process.env.NEXT_PUBLIC_LIFE_TOKEN_ADDRESS ??
   process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ??
@@ -60,11 +33,49 @@ const LIFE_TOKEN_ABI = parseAbi([
   "function balanceOf(address owner) view returns (uint256)",
   "function transfer(address to, uint256 amount) returns (bool)"
 ]);
-const ARENA_STORAGE_KEY = "lifequest:arena-duels";
+type ArenaDuel = {
+  id: string;
+  title: string;
+  type?: string | null;
+  unit?: string | null;
+  you: { name: string; progress: number; total: number };
+  rival: { name: string; progress: number; total: number };
+  timeLeft: string;
+  stake: string;
+};
+
+type ChallengeRow = {
+  id?: string;
+  title?: string | null;
+  type?: string | null;
+  goal?: number | string | null;
+  unit?: string | null;
+  stake?: number | string | null;
+  rival?: string | null;
+  user_address?: string | null;
+  you_progress?: number | string | null;
+  rival_progress?: number | string | null;
+  duration_days?: number | null;
+  created_at?: string | null;
+};
 
 function progressPercent(current: number, total: number) {
   if (!total) return 0;
   return Math.min(100, Math.round((current / total) * 100));
+}
+
+function formatTimeLeft(createdAt?: string | null, durationDays = CHALLENGE_DURATION_DAYS) {
+  if (!createdAt) return `${durationDays} giorni`;
+  const start = new Date(createdAt);
+  if (Number.isNaN(start.getTime())) return `${durationDays} giorni`;
+  const end = new Date(start);
+  end.setDate(start.getDate() + durationDays);
+  const diffMs = end.getTime() - Date.now();
+  if (diffMs <= 0) return "Scaduta";
+  const hours = Math.ceil(diffMs / (1000 * 60 * 60));
+  if (hours < 24) return `${hours} ore`;
+  const days = Math.ceil(hours / 24);
+  return `${days} giorni`;
 }
 
 function resolveDuelType(duel: { type?: string; title: string }) {
@@ -75,14 +86,39 @@ function resolveDuelType(duel: { type?: string; title: string }) {
   return "Corsa";
 }
 
-function formatGapLabel(type: string, gap: number) {
+function buildDuelFromRow(row: ChallengeRow): ArenaDuel {
+  const type = row.type ?? "Corsa";
+  const goalValue = Number(row.goal) || 1;
+  const unit = row.unit ?? (type === "Palestra" ? "sessioni" : "km");
+  const title = row.title ?? `${type} ${goalValue} ${unit}`;
+  const stakeValue = Number(row.stake) || 0;
+  const youProgress = Number(row.you_progress) || 0;
+  const rivalProgress = Number(row.rival_progress) || 0;
+  return {
+    id: row.id ?? `${type}-${Date.now()}`,
+    title,
+    type,
+    unit,
+    you: { name: "Tu", progress: youProgress, total: goalValue },
+    rival: { name: row.rival ?? "Avversario", progress: rivalProgress, total: goalValue },
+    timeLeft: formatTimeLeft(row.created_at, row.duration_days ?? CHALLENGE_DURATION_DAYS),
+    stake: `${stakeValue} LIFE`
+  };
+}
+
+function formatGapLabel(type: string, gap: number, unit?: string | null) {
   if (!Number.isFinite(gap)) return "0";
   const sign = gap > 0 ? "+" : gap < 0 ? "-" : "";
   const abs = Math.abs(gap);
 
-  if (type === "Palestra") {
+  if (type === "Palestra" || unit === "sessioni") {
     const value = Math.round(abs);
     return `${sign}${value} sessioni`;
+  }
+
+  if (type === "Nuoto" || unit === "metri") {
+    const meters = Math.round(abs);
+    return `${sign}${meters} m`;
   }
 
   if (abs < 1) {
@@ -100,7 +136,11 @@ export default function ArenaPage() {
   const [challengeGoal, setChallengeGoal] = useState("");
   const [challengeStake, setChallengeStake] = useState("");
   const [challengeRival, setChallengeRival] = useState(rivals[0]?.name ?? "");
-  const [draftDuels, setDraftDuels] = useState<typeof duels>([]);
+  const [challenges, setChallenges] = useState<ArenaDuel[]>([]);
+  const [isChallengesLoading, setIsChallengesLoading] = useState(true);
+  const [challengesError, setChallengesError] = useState<string | null>(null);
+  const [isSavingChallenge, setIsSavingChallenge] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const { address, isConnected } = useAccount();
   const {
     data: burnTxHash,
@@ -142,24 +182,26 @@ export default function ArenaPage() {
     unit: string;
   } | null>(null);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const stored = window.localStorage.getItem(ARENA_STORAGE_KEY);
-    if (!stored) return;
-    try {
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed)) {
-        setDraftDuels(parsed);
-      }
-    } catch {
-      // Ignore malformed storage.
+  const fetchChallenges = useCallback(async () => {
+    setIsChallengesLoading(true);
+    setChallengesError(null);
+    const { data, error } = await supabase
+      .from("challenges")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) {
+      setChallengesError("Errore nel caricamento delle sfide.");
+      setChallenges([]);
+    } else {
+      const list = Array.isArray(data) ? data.map((row) => buildDuelFromRow(row)) : [];
+      setChallenges(list);
     }
+    setIsChallengesLoading(false);
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(ARENA_STORAGE_KEY, JSON.stringify(draftDuels));
-  }, [draftDuels]);
+    void fetchChallenges();
+  }, [fetchChallenges]);
 
   const challengeConfig = useMemo(() => {
     if (challengeType === "Nuoto") {
@@ -197,7 +239,9 @@ export default function ArenaPage() {
     ? "Waiting validation..."
     : isBurnConfirming
       ? "Conferma on-chain..."
-      : "Crea Sfida";
+      : isSavingChallenge
+        ? "Salvataggio..."
+        : "Crea Sfida";
 
   const handleCreateChallenge = () => {
     if (!isChallengeValid) return;
@@ -221,24 +265,35 @@ export default function ArenaPage() {
   useEffect(() => {
     if (!isBurnSuccess || !pendingChallengeRef.current) return;
     const payload = pendingChallengeRef.current;
-    const id = `${payload.type}-${Date.now()}`;
-    setDraftDuels((prev) => [
-      {
-        id,
+    pendingChallengeRef.current = null;
+
+    const saveChallenge = async () => {
+      setIsSavingChallenge(true);
+      setSaveError(null);
+      const insertPayload = {
         title: `${payload.type} ${payload.goal} ${payload.unit}`,
         type: payload.type,
-        you: { name: "Tu", progress: 0, total: Number(payload.goal) || 1 },
-        rival: { name: payload.rival, progress: 0, total: Number(payload.goal) || 1 },
-        timeLeft: "7 giorni",
-        stake: `${payload.stake} LIFE`
-      },
-      ...prev
-    ]);
-    pendingChallengeRef.current = null;
-    setIsModalOpen(false);
-    setChallengeGoal("");
-    setChallengeStake("");
-  }, [isBurnSuccess]);
+        goal: Number(payload.goal),
+        unit: payload.unit,
+        stake: payload.stake,
+        rival: payload.rival,
+        user_address: address ?? null
+      };
+      const { error } = await supabase.from("challenges").insert(insertPayload);
+      if (error) {
+        setSaveError("Errore nel salvataggio della sfida.");
+        setIsSavingChallenge(false);
+        return;
+      }
+      await fetchChallenges();
+      setIsSavingChallenge(false);
+      setIsModalOpen(false);
+      setChallengeGoal("");
+      setChallengeStake("");
+    };
+
+    void saveChallenge();
+  }, [address, fetchChallenges, isBurnSuccess]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -315,37 +370,50 @@ export default function ArenaPage() {
             </span>
           </div>
           <div className="mt-6 grid gap-5">
-            {[...draftDuels, ...duels].map((duel) => {
-              const youPct = progressPercent(duel.you.progress, duel.you.total);
-              const rivalPct = progressPercent(
-                duel.rival.progress,
-                duel.rival.total
-              );
-              const duelType = resolveDuelType(duel);
-              const gapValue = duel.you.progress - duel.rival.progress;
-              const gapLabel = formatGapLabel(duelType, gapValue);
-              const status =
-                youPct > rivalPct
-                  ? {
-                      label: "Stai Vincendo! 🏆",
-                      tone: "border-emerald-400/60 bg-emerald-500/15 text-emerald-200"
-                    }
-                  : youPct < rivalPct
+            {isChallengesLoading ? (
+              <div className="rounded-3xl border border-white/10 bg-slate-900/40 p-6 text-sm text-slate-300">
+                Caricamento sfide...
+              </div>
+            ) : challengesError ? (
+              <div className="rounded-3xl border border-rose-400/40 bg-rose-500/10 p-6 text-sm text-rose-200">
+                {challengesError}
+              </div>
+            ) : challenges.length === 0 ? (
+              <div className="rounded-3xl border border-white/10 bg-slate-900/40 p-6 text-sm text-slate-300">
+                Nessuna sfida attiva al momento. Crea la prima per iniziare!
+              </div>
+            ) : (
+              challenges.map((duel) => {
+                const youPct = progressPercent(duel.you.progress, duel.you.total);
+                const rivalPct = progressPercent(
+                  duel.rival.progress,
+                  duel.rival.total
+                );
+                const duelType = resolveDuelType(duel);
+                const gapValue = duel.you.progress - duel.rival.progress;
+                const gapLabel = formatGapLabel(duelType, gapValue, duel.unit);
+                const status =
+                  youPct > rivalPct
                     ? {
-                        label: "Recupera! 🔥",
-                        tone: "border-rose-400/60 bg-rose-500/15 text-rose-200"
+                        label: "Stai Vincendo! 🏆",
+                        tone: "border-emerald-400/60 bg-emerald-500/15 text-emerald-200"
                       }
-                    : {
-                        label: "Testa a testa",
-                        tone: "border-slate-600/70 bg-slate-700/40 text-slate-200"
-                      };
-              const showStravaLink = duelType === "Corsa" || duelType === "Nuoto";
+                    : youPct < rivalPct
+                      ? {
+                          label: "Recupera! 🔥",
+                          tone: "border-rose-400/60 bg-rose-500/15 text-rose-200"
+                        }
+                      : {
+                          label: "Testa a testa",
+                          tone: "border-slate-600/70 bg-slate-700/40 text-slate-200"
+                        };
+                const showStravaLink = duelType === "Corsa" || duelType === "Nuoto";
 
-              return (
-                <div
-                  key={duel.id}
-                  className="rounded-3xl border border-white/10 bg-slate-900/50 p-6 shadow-2xl"
-                >
+                return (
+                  <div
+                    key={duel.id}
+                    className="rounded-3xl border border-white/10 bg-slate-900/50 p-6 shadow-2xl"
+                  >
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
@@ -430,15 +498,19 @@ export default function ArenaPage() {
                     Tempo rimasto: {duel.timeLeft}
                   </div>
                 </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
         </section>
       </div>
 
       <button
         type="button"
-        onClick={() => setIsModalOpen(true)}
+        onClick={() => {
+          setSaveError(null);
+          setIsModalOpen(true);
+        }}
         className="fixed bottom-6 right-6 z-20 flex items-center gap-2 rounded-full bg-gradient-to-r from-red-500 to-fuchsia-500 px-6 py-3 text-sm font-semibold text-white shadow-[0_0_25px_rgba(239,68,68,0.5)] transition hover:scale-105"
       >
         ⚔️ Nuova Sfida
@@ -546,9 +618,14 @@ export default function ArenaPage() {
                 )}
               </label>
             </div>
+            {saveError ? (
+              <div className="mt-4 rounded-2xl border border-rose-400/40 bg-rose-500/10 px-4 py-2 text-xs text-rose-200">
+                {saveError}
+              </div>
+            ) : null}
             <button
               type="button"
-              disabled={!isChallengeValid || isBurning}
+              disabled={!isChallengeValid || isBurning || isSavingChallenge}
               onClick={handleCreateChallenge}
               className="mt-5 w-full rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-200 transition disabled:cursor-not-allowed disabled:opacity-50"
             >
