@@ -11,6 +11,8 @@ import {
   UserPlus,
   X
 } from "lucide-react";
+import { useAccount, useReadContract } from "wagmi";
+import { formatEther, parseAbi, type Address } from "viem";
 
 const rivals = [
   { id: "neo", name: "Neo", level: 7 },
@@ -47,6 +49,13 @@ const duels = [
   }
 ];
 
+const LIFE_TOKEN_ADDRESS = (process.env.NEXT_PUBLIC_LIFE_TOKEN_ADDRESS ??
+  process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ??
+  "0x0000000000000000000000000000000000000000") as Address;
+const LIFE_TOKEN_ABI = parseAbi([
+  "function balanceOf(address owner) view returns (uint256)"
+]);
+
 function progressPercent(current: number, total: number) {
   if (!total) return 0;
   return Math.min(100, Math.round((current / total) * 100));
@@ -57,16 +66,59 @@ export default function ArenaPage() {
   const [challengeType, setChallengeType] = useState("Corsa");
   const [challengeGoal, setChallengeGoal] = useState("");
   const [challengeStake, setChallengeStake] = useState("");
+  const [challengeRival, setChallengeRival] = useState(rivals[0]?.name ?? "");
   const [draftDuels, setDraftDuels] = useState<typeof duels>([]);
+  const { address, isConnected } = useAccount();
+  const { data: lifeBalance } = useReadContract({
+    address: LIFE_TOKEN_ADDRESS,
+    abi: LIFE_TOKEN_ABI,
+    functionName: "balanceOf",
+    args: address ? [address] : undefined,
+    query: {
+      enabled: Boolean(address)
+    }
+  });
+  const lifeBalanceFormatted = useMemo(() => {
+    if (!address || lifeBalance === undefined) return "—";
+    return formatEther(lifeBalance);
+  }, [address, lifeBalance]);
+  const lifeBalanceValue = useMemo(() => {
+    if (!address || lifeBalance === undefined) return null;
+    const parsed = Number(formatEther(lifeBalance));
+    return Number.isFinite(parsed) ? parsed : null;
+  }, [address, lifeBalance]);
 
+  const challengeConfig = useMemo(() => {
+    if (challengeType === "Nuoto") {
+      return {
+        unit: "metri",
+        chips: ["500", "1000", "2000"]
+      };
+    }
+    if (challengeType === "Palestra") {
+      return {
+        unit: "sessioni",
+        chips: ["3", "5", "10"]
+      };
+    }
+    return {
+      unit: "km",
+      chips: ["5", "10", "21"]
+    };
+  }, [challengeType]);
+
+  const stakeValue = Number(challengeStake);
   const isChallengeValid = useMemo(() => {
-    const stakeValue = Number(challengeStake);
     return (
+      challengeRival.trim().length > 0 &&
       challengeGoal.trim().length > 2 &&
+      isConnected &&
+      lifeBalanceValue !== null &&
       Number.isFinite(stakeValue) &&
-      stakeValue > 0
+      stakeValue > 0 &&
+      stakeValue <= lifeBalanceValue
     );
-  }, [challengeGoal, challengeStake]);
+  }, [challengeGoal, challengeRival, isConnected, lifeBalanceValue, stakeValue]);
 
   const handleCreateChallenge = () => {
     if (!isChallengeValid) return;
@@ -74,7 +126,8 @@ export default function ArenaPage() {
     const payload = {
       type: challengeType,
       goal: challengeGoal.trim(),
-      stake: Number(challengeStake)
+      stake: stakeValue,
+      rival: challengeRival
     };
     console.log("Arena challenge payload", payload);
 
@@ -82,9 +135,9 @@ export default function ArenaPage() {
     setDraftDuels((prev) => [
       {
         id,
-        title: `${challengeType} ${challengeGoal.trim()}`,
+        title: `${challengeType} ${challengeGoal.trim()} ${challengeConfig.unit}`,
         you: { name: "Tu", progress: 0, total: Number(challengeGoal) || 1 },
-        rival: { name: "Sfida Aperta", progress: 0, total: Number(challengeGoal) || 1 },
+        rival: { name: challengeRival, progress: 0, total: Number(challengeGoal) || 1 },
         timeLeft: "7 giorni",
         stake: `${payload.stake} LIFE`
       },
@@ -274,10 +327,31 @@ export default function ArenaPage() {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <p className="mt-3 text-sm text-slate-300">
-              Placeholder: seleziona il tipo di sfida, durata/obiettivo e posta
-              in gioco.
-            </p>
+            <div className="mt-5">
+              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
+                Scegli Rivale
+              </p>
+              <div className="mt-3 flex items-center gap-3 overflow-x-auto pb-2">
+                {rivals.map((rival) => (
+                  <button
+                    key={`modal-${rival.id}`}
+                    type="button"
+                    onClick={() => setChallengeRival(rival.name)}
+                    className={`flex min-w-[110px] flex-col items-center gap-2 rounded-2xl border px-3 py-3 text-xs transition ${
+                      challengeRival === rival.name
+                        ? "border-red-400/70 bg-red-500/10 text-white"
+                        : "border-white/10 bg-slate-950/60 text-slate-300 hover:border-red-400/40 hover:text-white"
+                    }`}
+                  >
+                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-red-500/50 to-purple-500/40 text-sm font-bold">
+                      {rival.name.slice(0, 2).toUpperCase()}
+                    </span>
+                    <span className="text-[11px]">{rival.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="mt-5 grid grid-cols-3 gap-3">
               {["Corsa", "Nuoto", "Palestra"].map((label) => (
                 <button
@@ -296,14 +370,26 @@ export default function ArenaPage() {
             </div>
             <div className="mt-4 grid gap-3">
               <label className="text-xs text-slate-300">
-                Durata/Obiettivo
+                Durata/Obiettivo ({challengeConfig.unit})
                 <input
                   value={challengeGoal}
                   onChange={(event) => setChallengeGoal(event.target.value)}
-                  placeholder="Es. 20 km / 6 sessioni"
+                  placeholder={`Es. ${challengeConfig.chips[0]} ${challengeConfig.unit}`}
                   className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-200 outline-none transition focus:border-red-400/60"
                 />
               </label>
+              <div className="flex flex-wrap gap-2">
+                {challengeConfig.chips.map((chip) => (
+                  <button
+                    key={`chip-${chip}`}
+                    type="button"
+                    onClick={() => setChallengeGoal(chip)}
+                    className="rounded-full border border-white/10 bg-slate-950/60 px-3 py-1 text-[11px] font-semibold text-slate-200 transition hover:border-red-400/50 hover:text-white"
+                  >
+                    {chip} {challengeConfig.unit}
+                  </button>
+                ))}
+              </div>
               <label className="text-xs text-slate-300">
                 Posta in gioco (LIFE)
                 <input
@@ -312,8 +398,21 @@ export default function ArenaPage() {
                   value={challengeStake}
                   onChange={(event) => setChallengeStake(event.target.value)}
                   placeholder="Es. 50"
-                  className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-200 outline-none transition focus:border-red-400/60"
+                  className={`mt-2 w-full rounded-xl border bg-slate-950/60 px-4 py-3 text-sm text-slate-200 outline-none transition focus:border-red-400/60 ${
+                    lifeBalanceValue !== null && stakeValue > lifeBalanceValue
+                      ? "border-rose-400/70"
+                      : "border-white/10"
+                  }`}
                 />
+                {isConnected ? (
+                  <p className="mt-2 text-[11px] text-emerald-200">
+                    Saldo disponibile: {lifeBalanceFormatted} LIFE
+                  </p>
+                ) : (
+                  <p className="mt-2 text-[11px] text-slate-400">
+                    Connetti il wallet per scommettere.
+                  </p>
+                )}
               </label>
             </div>
             <button
