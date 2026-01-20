@@ -555,7 +555,8 @@ export default function ArenaPage() {
                 const showStravaLink = duelType === "Corsa" || duelType === "Nuoto";
                 const isCreator =
                   Boolean(address && duel.creatorAddress) &&
-                  duel.creatorAddress?.toLowerCase() === address.toLowerCase();
+                  duel.creatorAddress?.toLowerCase() ===
+                    (address?.toLowerCase() ?? "");
                 const canAccept =
                   isConnected && !isCreator && duel.status === "active";
                 const isAccepting = acceptingChallengeId === duel.id;
