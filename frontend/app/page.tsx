@@ -252,6 +252,7 @@ function HomeContent() {
   const perfectWeekFlashTimerRef = useRef<number | null>(null);
   const perfectWeekPrevRef = useRef<boolean | null>(null);
   const levelUpGlowTimerRef = useRef<number | null>(null);
+  const previousWalletRef = useRef<string | null>(null);
   const searchParams = useSearchParams();
   const { address, isConnected } = useAccount();
   const walletAddress = address ?? null;
@@ -473,6 +474,26 @@ function HomeContent() {
     if (typeof window === "undefined") {
       return;
     }
+    const nextWallet = walletAddress?.toLowerCase() ?? null;
+    const prevWallet = previousWalletRef.current;
+    if (prevWallet && prevWallet !== nextWallet) {
+      window.localStorage.removeItem(`${STRAVA_SYNCED_KEY}:${prevWallet}`);
+      if (nextWallet) {
+        window.localStorage.removeItem(`${STRAVA_SYNCED_KEY}:${nextWallet}`);
+      }
+      window.localStorage.removeItem(STRAVA_SYNCED_KEY);
+    }
+    if (!nextWallet && prevWallet) {
+      window.localStorage.removeItem(`${STRAVA_SYNCED_KEY}:${prevWallet}`);
+      window.localStorage.removeItem(STRAVA_SYNCED_KEY);
+    }
+    previousWalletRef.current = nextWallet;
+  }, [walletAddress]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
     if (!walletAddress) {
       setHasSyncedStrava(false);
       return;
@@ -568,15 +589,41 @@ function HomeContent() {
 
   const handleSync = async () => {
     if (isSyncing) return;
+    if (!walletAddress) {
+      toast.error("Connetti il wallet per sincronizzare Strava.", {
+        style: {
+          background: "#0f172a",
+          color: "#fecdd3",
+          border: "1px solid rgba(244, 63, 94, 0.4)"
+        }
+      });
+      return;
+    }
     setIsSyncing(true);
     setLoadError(null);
     setSyncNotice(null);
 
     try {
-      const response = await fetch(STRAVA_SYNC_URL, { method: "POST" });
+      const response = await fetch(STRAVA_SYNC_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ walletAddress })
+      });
       const data = await response.json();
 
       if (!response.ok) {
+        if (data?.status === "wallet_conflict") {
+          toast.error(data?.message || "Account Strava già collegato.", {
+            style: {
+              background: "#0f172a",
+              color: "#fecdd3",
+              border: "1px solid rgba(244, 63, 94, 0.4)"
+            }
+          });
+          return;
+        }
         if (data?.status === "needs_auth") {
           toast("Collega Strava per continuare la sincronizzazione.", {
             icon: "🔗",
@@ -586,7 +633,7 @@ function HomeContent() {
               border: "1px solid rgba(148, 163, 184, 0.4)"
             }
           });
-          window.location.href = STRAVA_AUTH_URL;
+          window.location.href = `${STRAVA_AUTH_URL}?wallet=${walletAddress}`;
           return;
         }
         throw new Error(data?.message || "Errore di sincronizzazione.");
@@ -735,6 +782,8 @@ function HomeContent() {
   useEffect(() => {
     const minted = searchParams.get("minted") === "true";
     const noNewActivities = searchParams.get("no_new_activities") === "true";
+    const stravaError = searchParams.get("strava_error");
+    const conflictWallet = searchParams.get("wallet");
 
     if (minted) {
       setSyncNotice(null);
@@ -763,11 +812,28 @@ function HomeContent() {
       });
     }
 
+    if (stravaError === "wallet_conflict") {
+      const message = conflictWallet
+        ? `Questo account Strava è già collegato a un altro wallet (${conflictWallet})`
+        : "Questo account Strava è già collegato a un altro wallet.";
+      toast.error(message, {
+        style: {
+          background: "#0f172a",
+          color: "#fecdd3",
+          border: "1px solid rgba(244, 63, 94, 0.4)"
+        }
+      });
+    }
+
     if (minted || noNewActivities) {
       markStravaSynced(walletAddress);
+    }
+    if (minted || noNewActivities || stravaError) {
       const url = new URL(window.location.href);
       url.searchParams.delete("minted");
       url.searchParams.delete("no_new_activities");
+      url.searchParams.delete("strava_error");
+      url.searchParams.delete("wallet");
       window.history.replaceState({}, "", url.toString());
     }
   }, [searchParams, walletAddress]);

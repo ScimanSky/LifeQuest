@@ -28,6 +28,7 @@ const PORT = process.env.PORT || 4000;
 const STRAVA_REDIRECT_URI =
   process.env.STRAVA_REDIRECT_URI ||
   `http://localhost:${PORT}/strava/callback`;
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 const STRAVA_AFTER_TIMESTAMP = 1767225600;
 const STRAVA_PER_PAGE = 100;
 const IRON_PROTOCOL_TYPES = new Set([
@@ -52,6 +53,12 @@ const RECIPIENT_ADDRESS = "0x9ee32F0BE08F7A1B4E40e47A82a355a31aD5077C";
 const PAID_ACTIVITIES_PATH = path.join(__dirname, "paid_activities.json");
 const STRAVA_TOKEN_PATH = path.join(__dirname, "strava_tokens.json");
 const DATABASE_PATH = path.join(__dirname, "database.json");
+
+function normalizeWallet(address) {
+  if (!address || typeof address !== "string") return null;
+  if (!ethers.isAddress(address)) return null;
+  return address.toLowerCase();
+}
 
 function loadPaidActivities() {
   try {
@@ -94,16 +101,26 @@ function refreshPaidActivities() {
 function loadStravaTokens() {
   try {
     if (!fs.existsSync(STRAVA_TOKEN_PATH)) {
-      fs.writeFileSync(STRAVA_TOKEN_PATH, JSON.stringify({}, null, 2));
-      return {};
+      const initial = { wallets: {}, athleteToWallet: {} };
+      fs.writeFileSync(STRAVA_TOKEN_PATH, JSON.stringify(initial, null, 2));
+      return initial;
     }
 
     const raw = fs.readFileSync(STRAVA_TOKEN_PATH, "utf8");
     const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : {};
+    if (!parsed || typeof parsed !== "object") {
+      return { wallets: {}, athleteToWallet: {} };
+    }
+    const wallets =
+      parsed.wallets && typeof parsed.wallets === "object" ? parsed.wallets : {};
+    const athleteToWallet =
+      parsed.athleteToWallet && typeof parsed.athleteToWallet === "object"
+        ? parsed.athleteToWallet
+        : {};
+    return { wallets, athleteToWallet };
   } catch (err) {
     console.error("Errore lettura strava_tokens.json:", err);
-    return {};
+    return { wallets: {}, athleteToWallet: {} };
   }
 }
 
@@ -483,7 +500,7 @@ async function mintReward(totalReward) {
   return tx.wait();
 }
 
-function buildStravaAuthUrl() {
+function buildStravaAuthUrl(wallet) {
   const params = new URLSearchParams({
     client_id: process.env.STRAVA_CLIENT_ID,
     redirect_uri: STRAVA_REDIRECT_URI,
@@ -491,13 +508,20 @@ function buildStravaAuthUrl() {
     scope: "activity:read_all",
     approval_prompt: "auto"
   });
+  if (wallet) {
+    params.set("state", wallet);
+  }
 
   return `https://www.strava.com/oauth/authorize?${params.toString()}`;
 }
 
-app.get("/strava/auth", (_req, res) => {
-  const url = buildStravaAuthUrl();
-  res.redirect(url);
+app.get("/strava/auth", (req, res) => {
+  const wallet = normalizeWallet(req.query.wallet);
+  if (!wallet) {
+    return res.status(400).json({ error: "Wallet non valido" });
+  }
+  const url = buildStravaAuthUrl(wallet);
+  return res.redirect(url);
 });
 
 app.get("/activities", (_req, res) => {
@@ -548,15 +572,30 @@ app.get("/user/stats", async (_req, res) => {
   }
 });
 
-app.post("/strava/sync", async (_req, res) => {
+app.post("/strava/sync", async (req, res) => {
   try {
     refreshPaidActivities();
-    const tokens = loadStravaTokens();
-    if (!tokens.refresh_token) {
+    const wallet = normalizeWallet(req.body?.walletAddress || req.query?.wallet);
+    if (!wallet) {
+      return res.status(400).json({ status: "error", message: "Wallet non valido" });
+    }
+
+    const tokensStore = loadStravaTokens();
+    const tokens = tokensStore.wallets[wallet];
+    if (!tokens || !tokens.refresh_token) {
       return res.status(400).json({
         status: "needs_auth",
         message: "Autorizzazione Strava mancante"
       });
+    }
+    if (tokens.athlete_id) {
+      const boundWallet = tokensStore.athleteToWallet[tokens.athlete_id];
+      if (boundWallet && boundWallet !== wallet) {
+        return res.status(409).json({
+          status: "wallet_conflict",
+          message: `Questo account Strava è già collegato a un altro wallet (${boundWallet})`
+        });
+      }
     }
 
     const refreshResponse = await axios.post(
@@ -581,11 +620,15 @@ app.post("/strava/sync", async (_req, res) => {
     }
 
     if (refreshToken && refreshToken !== tokens.refresh_token) {
-      saveStravaTokens({
+      tokensStore.wallets[wallet] = {
         ...tokens,
         refresh_token: refreshToken,
         updated_at: new Date().toISOString()
-      });
+      };
+      if (tokensStore.wallets[wallet]?.athlete_id) {
+        tokensStore.athleteToWallet[tokensStore.wallets[wallet].athlete_id] = wallet;
+      }
+      saveStravaTokens(tokensStore);
     }
 
     const activities = await fetchRecentActivities(accessToken);
@@ -631,7 +674,8 @@ app.post("/strava/sync", async (_req, res) => {
 app.get("/strava/callback", async (req, res) => {
   try {
     refreshPaidActivities();
-    const { code, error } = req.query;
+    const { code, error, state } = req.query;
+    const wallet = normalizeWallet(state);
 
     if (error) {
       return res.status(400).json({ error });
@@ -639,6 +683,9 @@ app.get("/strava/callback", async (req, res) => {
 
     if (!code || typeof code !== "string") {
       return res.status(400).json({ error: "Missing authorization code" });
+    }
+    if (!wallet) {
+      return res.status(400).json({ error: "Wallet mancante o non valido" });
     }
 
     const tokenResponse = await axios.post(
@@ -658,15 +705,29 @@ app.get("/strava/callback", async (req, res) => {
 
     const accessToken = tokenResponse.data?.access_token;
     const refreshToken = tokenResponse.data?.refresh_token;
+    const athleteId = tokenResponse.data?.athlete?.id;
     if (!accessToken) {
       return res.status(502).json({ error: "No access token from Strava" });
     }
     if (refreshToken) {
-      saveStravaTokens({
+      const tokensStore = loadStravaTokens();
+      if (athleteId) {
+        const boundWallet = tokensStore.athleteToWallet[athleteId];
+        if (boundWallet && boundWallet !== wallet) {
+          return res.redirect(
+            `${FRONTEND_URL}/?strava_error=wallet_conflict&wallet=${boundWallet}`
+          );
+        }
+      }
+      tokensStore.wallets[wallet] = {
         refresh_token: refreshToken,
-        athlete_id: tokenResponse.data?.athlete?.id,
+        athlete_id: athleteId,
         updated_at: new Date().toISOString()
-      });
+      };
+      if (athleteId) {
+        tokensStore.athleteToWallet[athleteId] = wallet;
+      }
+      saveStravaTokens(tokensStore);
     }
 
     const activities = await fetchRecentActivities(accessToken);
@@ -678,7 +739,7 @@ app.get("/strava/callback", async (req, res) => {
 
     if (totalRewardWithBonus === 0) {
       checkBadgeUnlock(computeBadgeStats(activities, db.stats), db);
-      return res.redirect("http://localhost:3000/?no_new_activities=true");
+      return res.redirect(`${FRONTEND_URL}/?no_new_activities=true`);
     }
 
     await mintReward(totalRewardWithBonus);
@@ -691,7 +752,7 @@ app.get("/strava/callback", async (req, res) => {
 
     checkBadgeUnlock(computeBadgeStats(activities, db.stats), db);
 
-    return res.redirect("http://localhost:3000/?minted=true");
+    return res.redirect(`${FRONTEND_URL}/?minted=true`);
   } catch (err) {
     console.error("Strava callback error:", err);
     return res.status(500).json({ error: "Errore interno" });
