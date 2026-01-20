@@ -39,8 +39,6 @@ const BURN_ADDRESS = "0x000000000000000000000000000000000000dEaD" as Address;
 const LIFE_TOKEN_ADDRESS = (process.env.NEXT_PUBLIC_LIFE_TOKEN_ADDRESS ??
   process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ??
   "0x0000000000000000000000000000000000000000") as Address;
-const OWNER_ADDRESS = (process.env.NEXT_PUBLIC_OWNER_ADDRESS ??
-  "0x0000000000000000000000000000000000000000") as Address;
 const LIFE_TOKEN_ABI = parseAbi([
   "function balanceOf(address owner) view returns (uint256)",
   "function transfer(address to, uint256 amount) returns (bool)",
@@ -259,9 +257,6 @@ function HomeContent() {
   const isWalletConnected = isConnected;
   const isDisconnected = !isWalletConnected;
   const showStravaSync = isWalletConnected && !hasSyncedStrava;
-  const isOwner =
-    Boolean(address && OWNER_ADDRESS) &&
-    address?.toLowerCase() === OWNER_ADDRESS.toLowerCase();
   const { data: lifeBalance, refetch: refetchLifeBalance } = useReadContract({
     address: LIFE_TOKEN_ADDRESS,
     abi: LIFE_TOKEN_ABI,
@@ -350,7 +345,7 @@ function HomeContent() {
 
   const isMinting = isMintPending || isMintConfirming;
   const handleAdminMint = useCallback(() => {
-    if (!address || !isOwner || isMinting) return;
+    if (!address || isMinting) return;
     toast("Minting 1000 LIFE...", {
       style: {
         background: "#0f172a",
@@ -364,7 +359,7 @@ function HomeContent() {
       functionName: "mint",
       args: [address, parseEther("1000")]
     });
-  }, [address, isMinting, isOwner, writeMintContract]);
+  }, [address, isMinting, writeMintContract]);
 
   const triggerConfettiBurst = useCallback((duration = 1800) => {
     setConfettiSeed((prev) => prev + 1);
@@ -1217,7 +1212,7 @@ function HomeContent() {
                     Connetti il wallet per sincronizzare Strava.
                   </p>
                 )}
-                {isOwner ? (
+                {isWalletConnected ? (
                   <button
                     type="button"
                     onClick={handleAdminMint}
