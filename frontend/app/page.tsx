@@ -30,6 +30,7 @@ const SEEN_BADGES_KEY = "lifequest:seen-badges";
 const STRAVA_SYNCED_KEY = "lifequest:strava-synced";
 const ACTIVITIES_PREVIEW_LIMIT = 6;
 const LIFE_TOKEN_ADDRESS = (process.env.NEXT_PUBLIC_LIFE_TOKEN_ADDRESS ??
+  process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ??
   "0x0000000000000000000000000000000000000000") as Address;
 const LIFE_TOKEN_ABI = parseAbi([
   "function balanceOf(address owner) view returns (uint256)"
