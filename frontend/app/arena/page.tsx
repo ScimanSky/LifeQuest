@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -11,7 +11,7 @@ import {
   UserPlus,
   X
 } from "lucide-react";
-import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { useAccount, usePublicClient, useReadContract, useWriteContract } from "wagmi";
 import { formatEther, parseAbi, parseEther, type Address } from "viem";
 import { supabase } from "../../utils/supabase";
 
@@ -29,13 +29,10 @@ const LIFE_TOKEN_ADDRESS = (process.env.NEXT_PUBLIC_LIFE_TOKEN_ADDRESS ??
   process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ??
   "0x0000000000000000000000000000000000000000") as Address;
 const BURN_ADDRESS = "0x000000000000000000000000000000000000dEaD" as Address;
-const ARENA_SPENDER_ADDRESS = (process.env.NEXT_PUBLIC_ARENA_SPENDER_ADDRESS ??
-  process.env.NEXT_PUBLIC_OWNER_ADDRESS ??
-  BURN_ADDRESS) as Address;
+const OWNER_ADDRESS = (process.env.NEXT_PUBLIC_OWNER_ADDRESS ??
+  "0x0000000000000000000000000000000000000000") as Address;
 const LIFE_TOKEN_ABI = parseAbi([
   "function balanceOf(address owner) view returns (uint256)",
-  "function allowance(address owner, address spender) view returns (uint256)",
-  "function approve(address spender, uint256 amount) returns (bool)",
   "function transfer(address to, uint256 amount) returns (bool)"
 ]);
 type ArenaDuel = {
@@ -140,49 +137,16 @@ export default function ArenaPage() {
   const [challengesError, setChallengesError] = useState<string | null>(null);
   const [isSavingChallenge, setIsSavingChallenge] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [isApproving, setIsApproving] = useState(false);
+  const [isTransferring, setIsTransferring] = useState(false);
   const { address, isConnected } = useAccount();
-  const {
-    data: burnTxHash,
-    isPending: isBurnPending,
-    writeContract
-  } = useWriteContract();
-  const {
-    data: approveTxHash,
-    isPending: isApprovePending,
-    writeContract: writeApproveContract
-  } = useWriteContract();
-  const {
-    isLoading: isBurnConfirming,
-    isSuccess: isBurnSuccess
-  } = useWaitForTransactionReceipt({
-    hash: burnTxHash,
-    query: {
-      enabled: Boolean(burnTxHash)
-    }
-  });
-  const {
-    isLoading: isApproveConfirming,
-    isSuccess: isApproveSuccess
-  } = useWaitForTransactionReceipt({
-    hash: approveTxHash,
-    query: {
-      enabled: Boolean(approveTxHash)
-    }
-  });
+  const publicClient = usePublicClient();
+  const { writeContractAsync } = useWriteContract();
   const { data: lifeBalance } = useReadContract({
     address: LIFE_TOKEN_ADDRESS,
     abi: LIFE_TOKEN_ABI,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
-    query: {
-      enabled: Boolean(address)
-    }
-  });
-  const { data: allowanceValue, refetch: refetchAllowance } = useReadContract({
-    address: LIFE_TOKEN_ADDRESS,
-    abi: LIFE_TOKEN_ABI,
-    functionName: "allowance",
-    args: address ? [address, ARENA_SPENDER_ADDRESS] : undefined,
     query: {
       enabled: Boolean(address)
     }
@@ -196,15 +160,6 @@ export default function ArenaPage() {
     const parsed = Number(formatEther(lifeBalance));
     return Number.isFinite(parsed) ? parsed : null;
   }, [address, lifeBalance]);
-  const pendingChallengeRef = useRef<{
-    type: string;
-    goal: string;
-    stake: number;
-    rival: string;
-    unit: string;
-  } | null>(null);
-  const transferRequestedRef = useRef(false);
-
   const fetchChallenges = useCallback(async () => {
     setIsChallengesLoading(true);
     setChallengesError(null);
@@ -257,105 +212,103 @@ export default function ArenaPage() {
       stakeValue <= lifeBalanceValue
     );
   }, [challengeGoal, challengeRival, isConnected, lifeBalanceValue, stakeValue]);
-  const stakeWei = useMemo(() => {
-    if (!Number.isFinite(stakeValue) || stakeValue <= 0) return null;
-    return parseEther(stakeValue.toString());
-  }, [stakeValue]);
-  const isBurning = isBurnPending || isBurnConfirming;
-  const isApproving = isApprovePending || isApproveConfirming;
-  const createLabel = isBurnPending
-    ? "Creo Sfida..."
-    : isBurnConfirming
+  const isBurning = isTransferring;
+  const createLabel = isApproving
+    ? "Approvo LIFE..."
+    : isTransferring
       ? "Creo Sfida..."
-      : isApproving
-        ? "Approvo LIFE..."
-        : isSavingChallenge
-          ? "Salvataggio..."
-          : "Crea Sfida";
+      : isSavingChallenge
+        ? "Salvataggio..."
+        : "Crea Sfida";
 
-  const handleCreateChallenge = () => {
-    if (!isChallengeValid) return;
+  const handleCreateChallenge = useCallback(async () => {
+    // 1. Controlli preliminari
+    if (!isChallengeValid || !address || !publicClient) return;
+    setSaveError(null);
 
-    const payload = {
-      type: challengeType,
-      goal: challengeGoal.trim(),
-      stake: stakeValue,
-      rival: challengeRival,
-      unit: challengeConfig.unit
+    // 2. Pulizia dati (Risolve errore 400 Supabase)
+    const parseNumericInput = (value: string) => {
+      const cleaned = value.replace(/[^\d.,-]/g, "").replace(",", ".");
+      return Number(cleaned);
     };
-    if (!stakeWei) return;
-    pendingChallengeRef.current = payload;
-    transferRequestedRef.current = false;
-    const allowance = allowanceValue ?? BigInt(0);
-    if (allowance < stakeWei) {
-      writeApproveContract({
-        address: LIFE_TOKEN_ADDRESS,
-        abi: LIFE_TOKEN_ABI,
-        functionName: "approve",
-        args: [ARENA_SPENDER_ADDRESS, stakeWei]
-      });
+
+    const goalValue = parseNumericInput(challengeGoal);
+    const stakeValue = parseNumericInput(challengeStake);
+
+    if (!Number.isFinite(goalValue) || goalValue <= 0) {
+      setSaveError("Obiettivo non valido.");
       return;
     }
-    transferRequestedRef.current = true;
-    writeContract({
-      address: LIFE_TOKEN_ADDRESS,
-      abi: LIFE_TOKEN_ABI,
-      functionName: "transfer",
-      args: [BURN_ADDRESS, stakeWei]
-    });
-  };
+    if (!Number.isFinite(stakeValue) || stakeValue <= 0) {
+      setSaveError("Stake non valido.");
+      return;
+    }
 
-  useEffect(() => {
-    if (!isBurnSuccess || !pendingChallengeRef.current) return;
-    const payload = pendingChallengeRef.current;
-    pendingChallengeRef.current = null;
-    transferRequestedRef.current = false;
+    // Conversione per Blockchain
+    const stakeWei = parseEther(stakeValue.toString());
 
-    const saveChallenge = async () => {
+    try {
+      // 3. Trasferimento Blockchain (Semplificato: niente approve)
+      setIsTransferring(true);
+
+      // NOTA: Qui stiamo inviando i token all'OWNER (l'Arena) invece che bruciarli,
+      // cosi puoi recuperarli durante i test. Se vuoi bruciarli, rimetti BURN_ADDRESS.
+      const destinationAddress = OWNER_ADDRESS;
+
+      const transferHash = await writeContractAsync({
+        address: LIFE_TOKEN_ADDRESS,
+        abi: LIFE_TOKEN_ABI,
+        functionName: "transfer",
+        args: [destinationAddress, stakeWei] // Invio diretto, niente allowance necessaria
+      });
+
+      await publicClient.waitForTransactionReceipt({ hash: transferHash });
+      setIsTransferring(false);
+
+      // 4. Salvataggio su Supabase
       setIsSavingChallenge(true);
-      setSaveError(null);
+
       const insertPayload = {
-        creator_address: address ?? null,
-        opponent_name: payload.rival,
-        type: payload.type,
-        goal: Number(payload.goal),
-        stake: Number(payload.stake),
+        creator_address: address, // Corretto: corrisponde al DB
+        opponent_name: challengeRival,
+        type: challengeType,
+        goal: goalValue, // Corretto: Numero
+        stake: stakeValue, // Corretto: Numero
         status: "active"
       };
+
       console.log("Dati finali per DB:", insertPayload);
-      const { error } = await supabase.from("challenges").insert(insertPayload);
+
+      const { error } = await supabase.from("challenges").insert([insertPayload]);
+
       if (error) {
-        console.error("Supabase insert error:", error.message, error.details);
-        setSaveError("Errore nel salvataggio della sfida.");
-        setIsSavingChallenge(false);
-        return;
+        console.error("Errore Supabase:", error);
+        throw new Error("Salvataggio DB fallito");
       }
-      await fetchChallenges();
+
+      // 5. Successo!
       setIsSavingChallenge(false);
       setIsModalOpen(false);
-      setChallengeGoal("");
-      setChallengeStake("");
-    };
-
-    void saveChallenge();
-  }, [address, fetchChallenges, isBurnSuccess]);
-
-  useEffect(() => {
-    if (!isApproveSuccess || !pendingChallengeRef.current) return;
-    if (transferRequestedRef.current) return;
-    const payload = pendingChallengeRef.current;
-    const stakeValue = Number(payload.stake);
-    if (!Number.isFinite(stakeValue) || stakeValue <= 0) return;
-    const amount = parseEther(stakeValue.toString());
-    transferRequestedRef.current = true;
-    void refetchAllowance();
-    writeContract({
-      address: LIFE_TOKEN_ADDRESS,
-      abi: LIFE_TOKEN_ABI,
-      functionName: "transfer",
-      args: [BURN_ADDRESS, amount]
-    });
-  }, [isApproveSuccess, refetchAllowance, writeContract]);
+      // Ricarica per mostrare la nuova sfida
+      window.location.reload();
+    } catch (error) {
+      console.error("Errore Creazione:", error);
+      setSaveError("Transazione fallita o annullata.");
+      setIsApproving(false);
+      setIsTransferring(false);
+      setIsSavingChallenge(false);
+    }
+  }, [
+    address,
+    challengeGoal,
+    challengeRival,
+    challengeStake,
+    challengeType,
+    isChallengeValid,
+    publicClient,
+    writeContractAsync
+    // Rimosso refetchAllowance e allowanceValue perche non servono piu
+  ]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
