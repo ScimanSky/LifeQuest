@@ -78,7 +78,7 @@ function formatTimeLeft(createdAt?: string | null, durationDays = CHALLENGE_DURA
   return `${days} giorni`;
 }
 
-function resolveDuelType(duel: { type?: string; title: string }) {
+function resolveDuelType(duel: { type?: string | null; title: string }) {
   if (duel.type) return duel.type;
   const title = duel.title.toLowerCase();
   if (title.includes("nuoto")) return "Nuoto";
