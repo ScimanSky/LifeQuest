@@ -126,6 +126,11 @@ function formatGapLabel(type: string, gap: number, unit?: string | null) {
   return `${sign}${value} km`;
 }
 
+function parseNumericInput(value: string) {
+  const cleaned = value.replace(/[^\d.,-]/g, "").replace(",", ".");
+  return Number(cleaned);
+}
+
 export default function ArenaPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [challengeType, setChallengeType] = useState("Corsa");
@@ -200,18 +205,32 @@ export default function ArenaPage() {
     };
   }, [challengeType]);
 
-  const stakeValue = Number(challengeStake);
+  useEffect(() => {
+    if (!challengeConfig.chips.length) return;
+    if (challengeConfig.chips.includes(challengeGoal)) return;
+    setChallengeGoal(challengeConfig.chips[0]);
+  }, [challengeConfig, challengeGoal]);
+
+  const stakeValue = parseNumericInput(challengeStake);
+  const goalValue = parseNumericInput(challengeGoal);
   const isChallengeValid = useMemo(() => {
     return (
       challengeRival.trim().length > 0 &&
-      challengeGoal.trim().length > 2 &&
+      Number.isFinite(goalValue) &&
+      goalValue > 0 &&
       isConnected &&
       lifeBalanceValue !== null &&
       Number.isFinite(stakeValue) &&
       stakeValue > 0 &&
       stakeValue <= lifeBalanceValue
     );
-  }, [challengeGoal, challengeRival, isConnected, lifeBalanceValue, stakeValue]);
+  }, [
+    challengeRival,
+    goalValue,
+    isConnected,
+    lifeBalanceValue,
+    stakeValue
+  ]);
   const isBurning = isTransferring;
   const createLabel = isApproving
     ? "Approvo LIFE..."
@@ -227,11 +246,6 @@ export default function ArenaPage() {
     setSaveError(null);
 
     // 2. Pulizia dati (Risolve errore 400 Supabase)
-    const parseNumericInput = (value: string) => {
-      const cleaned = value.replace(/[^\d.,-]/g, "").replace(",", ".");
-      return Number(cleaned);
-    };
-
     const goalValue = parseNumericInput(challengeGoal);
     const stakeValue = parseNumericInput(challengeStake);
 
@@ -589,12 +603,14 @@ export default function ArenaPage() {
             <div className="mt-4 grid gap-3">
               <label className="text-xs text-slate-300">
                 Durata/Obiettivo ({challengeConfig.unit})
-                <input
-                  value={challengeGoal}
-                  onChange={(event) => setChallengeGoal(event.target.value)}
-                  placeholder={`Es. ${challengeConfig.chips[0]} ${challengeConfig.unit}`}
-                  className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-200 outline-none transition focus:border-red-400/60"
-                />
+                <div className="mt-2 flex items-center justify-between rounded-xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-200">
+                  <span className="font-mono">
+                    {challengeGoal || challengeConfig.chips[0]}
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    {challengeConfig.unit}
+                  </span>
+                </div>
               </label>
               <div className="flex flex-wrap gap-2">
                 {challengeConfig.chips.map((chip) => (
