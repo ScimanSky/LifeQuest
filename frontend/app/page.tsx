@@ -94,6 +94,13 @@ const WEEKLY_GOALS = {
   mindfulness: 2
 };
 
+function getRankByLevel(level: number) {
+  if (level <= 5) return "NEOFITA (Lv 1-5)";
+  if (level <= 10) return "CHALLENGER (Lv 6-10)";
+  if (level <= 20) return "ELITE (Lv 11-20)";
+  return "LEGEND (Lv 21+)";
+}
+
 function playSuccessSound() {
   if (typeof window === "undefined") return;
   const AudioContext =
@@ -280,6 +287,10 @@ function HomeContent() {
       return `${percent.toFixed(precision)}%`;
     },
     [lifeBalanceValue]
+  );
+  const levelRank = useMemo(
+    () => getRankByLevel(currentLevel),
+    [currentLevel]
   );
   const canLevelUp =
     Boolean(isWalletConnected && lifeBalanceValue !== null) &&
@@ -1133,7 +1144,7 @@ function HomeContent() {
                       Livello <span className="font-mono">{currentLevel}</span>
                     </h2>
                     <span className="rounded-full border border-white/10 bg-slate-900/60 px-3 py-1 text-[11px] font-semibold text-slate-200">
-                      {userStats?.rank ?? "—"}
+                      {levelRank}
                     </span>
                   </div>
                   <p className="mt-2 text-xs text-slate-400">
