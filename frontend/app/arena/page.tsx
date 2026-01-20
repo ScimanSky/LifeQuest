@@ -51,16 +51,12 @@ type ArenaDuel = {
 
 type ChallengeRow = {
   id?: string;
-  title?: string | null;
+  creator_address?: string | null;
+  opponent_name?: string | null;
   type?: string | null;
   goal?: number | string | null;
-  unit?: string | null;
   stake?: number | string | null;
-  rival?: string | null;
-  user_address?: string | null;
-  you_progress?: number | string | null;
-  rival_progress?: number | string | null;
-  duration_days?: number | null;
+  status?: string | null;
   created_at?: string | null;
 };
 
@@ -94,19 +90,17 @@ function resolveDuelType(duel: { type?: string | null; title: string }) {
 function buildDuelFromRow(row: ChallengeRow): ArenaDuel {
   const type = row.type ?? "Corsa";
   const goalValue = Number(row.goal) || 1;
-  const unit = row.unit ?? (type === "Palestra" ? "sessioni" : "km");
-  const title = row.title ?? `${type} ${goalValue} ${unit}`;
+  const unit = type === "Palestra" ? "sessioni" : type === "Nuoto" ? "metri" : "km";
+  const title = `${type} ${goalValue} ${unit}`;
   const stakeValue = Number(row.stake) || 0;
-  const youProgress = Number(row.you_progress) || 0;
-  const rivalProgress = Number(row.rival_progress) || 0;
   return {
     id: row.id ?? `${type}-${Date.now()}`,
     title,
     type,
     unit,
-    you: { name: "Tu", progress: youProgress, total: goalValue },
-    rival: { name: row.rival ?? "Avversario", progress: rivalProgress, total: goalValue },
-    timeLeft: formatTimeLeft(row.created_at, row.duration_days ?? CHALLENGE_DURATION_DAYS),
+    you: { name: "Tu", progress: 0, total: goalValue },
+    rival: { name: row.opponent_name ?? "Avversario", progress: 0, total: goalValue },
+    timeLeft: formatTimeLeft(row.created_at, CHALLENGE_DURATION_DAYS),
     stake: `${stakeValue} LIFE`
   };
 }
@@ -321,16 +315,17 @@ export default function ArenaPage() {
       setIsSavingChallenge(true);
       setSaveError(null);
       const insertPayload = {
-        title: `${payload.type} ${payload.goal} ${payload.unit}`,
+        creator_address: address ?? null,
+        opponent_name: payload.rival,
         type: payload.type,
         goal: Number(payload.goal),
-        unit: payload.unit,
         stake: payload.stake,
-        rival: payload.rival,
-        user_address: address ?? null
+        status: "active"
       };
+      console.log("Dati inviati a Supabase:", insertPayload);
       const { error } = await supabase.from("challenges").insert(insertPayload);
       if (error) {
+        console.error("Supabase insert error:", error.message, error.details);
         setSaveError("Errore nel salvataggio della sfida.");
         setIsSavingChallenge(false);
         return;
