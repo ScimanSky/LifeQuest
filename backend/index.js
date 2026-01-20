@@ -762,4 +762,5 @@ app.get("/strava/callback", async (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server avviato su http://localhost:${PORT}`);
   console.log(`Strava redirect URI: ${STRAVA_REDIRECT_URI}`);
+  console.log(`Frontend URL: ${FRONTEND_URL}`);
 });
