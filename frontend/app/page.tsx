@@ -1015,12 +1015,20 @@ function HomeContent() {
               <h1 className="text-2xl font-bold tracking-tight text-white">Dashboard</h1>
             </div>
           </div>
-          <Link
-            href="/spiegazione"
-            className="inline-flex items-center rounded-full border border-cyan-400/40 px-4 py-2 text-xs font-semibold text-cyan-100 transition hover:border-cyan-300/70 hover:text-cyan-50"
-          >
-            Guida LifeQuest
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              href="/arena"
+              className="inline-flex items-center rounded-full border border-red-400/40 bg-red-500/10 px-4 py-2 text-xs font-semibold text-red-200 transition hover:border-red-300/70 hover:text-red-100"
+            >
+              Arena
+            </Link>
+            <Link
+              href="/spiegazione"
+              className="inline-flex items-center rounded-full border border-cyan-400/40 px-4 py-2 text-xs font-semibold text-cyan-100 transition hover:border-cyan-300/70 hover:text-cyan-50"
+            >
+              Guida LifeQuest
+            </Link>
+          </div>
         </header>
 
         <section className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:flex-1 lg:min-h-0">

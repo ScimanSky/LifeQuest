@@ -1,5 +1,8 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Bolt, Swords, Timer, Trophy, UserPlus } from "lucide-react";
+import { ArrowLeft, Bolt, Swords, Timer, Trophy, UserPlus, X } from "lucide-react";
 
 const rivals = [
   { id: "neo", name: "Neo", level: 7 },
@@ -42,6 +45,8 @@ function progressPercent(current: number, total: number) {
 }
 
 export default function ArenaPage() {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(239,68,68,0.18),transparent_55%)]" />
@@ -200,10 +205,58 @@ export default function ArenaPage() {
 
       <button
         type="button"
+        onClick={() => setIsModalOpen(true)}
         className="fixed bottom-6 right-6 z-20 flex items-center gap-2 rounded-full bg-gradient-to-r from-red-500 to-fuchsia-500 px-6 py-3 text-sm font-semibold text-white shadow-[0_0_25px_rgba(239,68,68,0.5)] transition hover:scale-105"
       >
         ⚔️ Nuova Sfida
       </button>
+
+      {isModalOpen ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/80 p-6">
+          <div className="w-full max-w-lg rounded-3xl border border-white/10 bg-slate-900/90 p-6 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-white">Nuova Sfida</h3>
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="rounded-full border border-white/10 p-2 text-slate-300 transition hover:text-white"
+                aria-label="Chiudi"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="mt-3 text-sm text-slate-300">
+              Placeholder: seleziona il tipo di sfida, durata/obiettivo e posta
+              in gioco.
+            </p>
+            <div className="mt-5 grid grid-cols-3 gap-3">
+              {["Corsa", "Nuoto", "Palestra"].map((label) => (
+                <button
+                  key={label}
+                  type="button"
+                  className="rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-red-400/50 hover:text-white"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="mt-4 grid gap-3">
+              <div className="rounded-xl border border-white/10 bg-slate-950/60 px-4 py-3 text-xs text-slate-300">
+                Durata/Obiettivo (es. 20 km / 7 giorni)
+              </div>
+              <div className="rounded-xl border border-white/10 bg-slate-950/60 px-4 py-3 text-xs text-slate-300">
+                Posta in gioco (es. 50 LIFE)
+              </div>
+            </div>
+            <button
+              type="button"
+              className="mt-5 w-full rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-200"
+            >
+              Crea Sfida (coming soon)
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
