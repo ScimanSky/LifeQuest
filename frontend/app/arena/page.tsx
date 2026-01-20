@@ -1,8 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Bolt, Swords, Timer, Trophy, UserPlus, X } from "lucide-react";
+import {
+  ArrowLeft,
+  Bolt,
+  Swords,
+  Timer,
+  Trophy,
+  UserPlus,
+  X
+} from "lucide-react";
 
 const rivals = [
   { id: "neo", name: "Neo", level: 7 },
@@ -46,6 +54,47 @@ function progressPercent(current: number, total: number) {
 
 export default function ArenaPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [challengeType, setChallengeType] = useState("Corsa");
+  const [challengeGoal, setChallengeGoal] = useState("");
+  const [challengeStake, setChallengeStake] = useState("");
+  const [draftDuels, setDraftDuels] = useState<typeof duels>([]);
+
+  const isChallengeValid = useMemo(() => {
+    const stakeValue = Number(challengeStake);
+    return (
+      challengeGoal.trim().length > 2 &&
+      Number.isFinite(stakeValue) &&
+      stakeValue > 0
+    );
+  }, [challengeGoal, challengeStake]);
+
+  const handleCreateChallenge = () => {
+    if (!isChallengeValid) return;
+
+    const payload = {
+      type: challengeType,
+      goal: challengeGoal.trim(),
+      stake: Number(challengeStake)
+    };
+    console.log("Arena challenge payload", payload);
+
+    const id = `${challengeType}-${Date.now()}`;
+    setDraftDuels((prev) => [
+      {
+        id,
+        title: `${challengeType} ${challengeGoal.trim()}`,
+        you: { name: "Tu", progress: 0, total: Number(challengeGoal) || 1 },
+        rival: { name: "Sfida Aperta", progress: 0, total: Number(challengeGoal) || 1 },
+        timeLeft: "7 giorni",
+        stake: `${payload.stake} LIFE`
+      },
+      ...prev
+    ]);
+
+    setIsModalOpen(false);
+    setChallengeGoal("");
+    setChallengeStake("");
+  };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -122,7 +171,7 @@ export default function ArenaPage() {
             </span>
           </div>
           <div className="mt-6 grid gap-5">
-            {duels.map((duel) => {
+            {[...draftDuels, ...duels].map((duel) => {
               const youPct = progressPercent(duel.you.progress, duel.you.total);
               const rivalPct = progressPercent(
                 duel.rival.progress,
@@ -234,25 +283,46 @@ export default function ArenaPage() {
                 <button
                   key={label}
                   type="button"
-                  className="rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-red-400/50 hover:text-white"
+                  onClick={() => setChallengeType(label)}
+                  className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                    challengeType === label
+                      ? "border-red-400/70 bg-red-500/20 text-white"
+                      : "border-white/10 bg-slate-950/60 text-slate-200 hover:border-red-400/50 hover:text-white"
+                  }`}
                 >
                   {label}
                 </button>
               ))}
             </div>
             <div className="mt-4 grid gap-3">
-              <div className="rounded-xl border border-white/10 bg-slate-950/60 px-4 py-3 text-xs text-slate-300">
-                Durata/Obiettivo (es. 20 km / 7 giorni)
-              </div>
-              <div className="rounded-xl border border-white/10 bg-slate-950/60 px-4 py-3 text-xs text-slate-300">
-                Posta in gioco (es. 50 LIFE)
-              </div>
+              <label className="text-xs text-slate-300">
+                Durata/Obiettivo
+                <input
+                  value={challengeGoal}
+                  onChange={(event) => setChallengeGoal(event.target.value)}
+                  placeholder="Es. 20 km / 6 sessioni"
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-200 outline-none transition focus:border-red-400/60"
+                />
+              </label>
+              <label className="text-xs text-slate-300">
+                Posta in gioco (LIFE)
+                <input
+                  type="number"
+                  min="1"
+                  value={challengeStake}
+                  onChange={(event) => setChallengeStake(event.target.value)}
+                  placeholder="Es. 50"
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-200 outline-none transition focus:border-red-400/60"
+                />
+              </label>
             </div>
             <button
               type="button"
-              className="mt-5 w-full rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-200"
+              disabled={!isChallengeValid}
+              onClick={handleCreateChallenge}
+              className="mt-5 w-full rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-200 transition disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Crea Sfida (coming soon)
+              Crea Sfida
             </button>
           </div>
         </div>
