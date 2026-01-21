@@ -751,7 +751,9 @@ export default function ArenaPage() {
                   ? new Date(duel.endAt).getTime()
                   : null;
                 const isExpired =
-                  Boolean(endTimestamp) && endTimestamp <= Date.now();
+                  typeof endTimestamp === "number" &&
+                  !Number.isNaN(endTimestamp) &&
+                  endTimestamp <= Date.now();
                 const isResolving =
                   duel.status === "matched" && Boolean(isExpired);
                 const isWinner =
