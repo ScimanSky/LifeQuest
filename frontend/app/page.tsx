@@ -32,10 +32,12 @@ const STRAVA_SYNC_URL = `${BACKEND_BASE_URL}/strava/sync`;
 const STRAVA_DISCONNECT_URL = `${BACKEND_BASE_URL}/strava/disconnect`;
 const ACTIVITIES_URL = `${BACKEND_BASE_URL}/activities`;
 const USER_STATS_URL = `${BACKEND_BASE_URL}/user/stats`;
+const LEVEL_UP_URL = `${BACKEND_BASE_URL}/user/level-up`;
 const SEEN_BADGES_KEY = "lifequest:seen-badges";
 const STRAVA_SYNCED_KEY = "lifequest:strava-synced";
 const BALANCE_REFRESH_KEY = "lifequest:balance-refresh";
 const ACTIVITIES_PREVIEW_LIMIT = 6;
+const LEVEL_XP = 2000;
 const LEVEL_UP_COST = 500;
 const BURN_ADDRESS = "0x000000000000000000000000000000000000dEaD" as Address;
 const LIFE_TOKEN_ADDRESS = (process.env.NEXT_PUBLIC_LIFE_TOKEN_ADDRESS ??
@@ -68,6 +70,10 @@ type UserStats = {
   balance: string;
   rank: string;
   xpMissing: string;
+  level?: number;
+  xpCurrent?: string;
+  nextLevelXp?: string;
+  xpTotal?: string;
   unlockedBadges: UserBadge[];
   badges?: Record<string, boolean>;
 };
@@ -79,14 +85,6 @@ type StatusBadgeProps = {
   tone?: BadgeTone;
 };
 
-const CURRENT_LEVEL = 5;
-const NEXT_LEVEL_XP = 2000;
-const CURRENT_XP = 1240;
-const LEVEL_PROGRESS = Math.min(
-  100,
-  Math.round((CURRENT_XP / NEXT_LEVEL_XP) * 100)
-);
-const IS_NEAR_GOAL = LEVEL_PROGRESS >= 90;
 const IRON_PROTOCOL_TYPES = new Set([
   "WeightTraining",
   "Workout",
@@ -240,7 +238,7 @@ function HomeContent() {
   >(null);
   const [showAllActivities, setShowAllActivities] = useState(false);
   const [isWalletCollapsed, setIsWalletCollapsed] = useState(false);
-  const [currentLevel, setCurrentLevel] = useState(CURRENT_LEVEL);
+  const [currentLevel, setCurrentLevel] = useState(1);
   const [showLevelUpGlow, setShowLevelUpGlow] = useState(false);
   const [userStats, setUserStats] = useState<UserStats | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
@@ -311,6 +309,21 @@ function HomeContent() {
     },
     [lifeBalanceValue]
   );
+  const xpCurrent = useMemo(() => {
+    if (!userStats?.xpCurrent) return 0;
+    const parsed = Number(userStats.xpCurrent);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }, [userStats?.xpCurrent]);
+  const nextLevelXp = useMemo(() => {
+    if (!userStats?.nextLevelXp) return LEVEL_XP;
+    const parsed = Number(userStats.nextLevelXp);
+    return Number.isFinite(parsed) ? parsed : LEVEL_XP;
+  }, [userStats?.nextLevelXp]);
+  const levelProgress = useMemo(() => {
+    if (!nextLevelXp) return 0;
+    return Math.min(100, Math.round((xpCurrent / nextLevelXp) * 100));
+  }, [nextLevelXp, xpCurrent]);
+  const isNearGoal = levelProgress >= 90;
   const levelRank = useMemo(
     () => getRankByLevel(currentLevel),
     [currentLevel]
@@ -318,7 +331,7 @@ function HomeContent() {
   const hasEnoughBalance =
     Boolean(isWalletConnected && lifeBalanceValue !== null) &&
     (lifeBalanceValue as number) >= LEVEL_UP_COST;
-  const hasEnoughXp = CURRENT_XP >= NEXT_LEVEL_XP;
+  const hasEnoughXp = xpCurrent >= nextLevelXp;
   const canLevelUp = Boolean(isWalletConnected && hasEnoughBalance && hasEnoughXp);
   const isLevelingUp = isLevelUpPending || isLevelUpConfirming;
   const levelUpLabel = isLevelUpPending
@@ -542,6 +555,14 @@ function HomeContent() {
       window.localStorage.setItem(key, "true");
     }
   }, [walletAddress]);
+
+  useEffect(() => {
+    if (!userStats?.level) return;
+    const parsed = Number(userStats.level);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      setCurrentLevel(parsed);
+    }
+  }, [userStats?.level]);
 
   useEffect(() => {
     if (!userStats || typeof window === "undefined") {
@@ -963,24 +984,47 @@ function HomeContent() {
 
   useEffect(() => {
     if (!isLevelUpSuccess) return;
-    setCurrentLevel((prev) => prev + 1);
-    triggerConfettiBurst(1800);
-    setShowLevelUpGlow(true);
-    void refetchLifeBalance();
-    toast.success("Level Up!", {
-      style: {
-        background: "#0f172a",
-        color: "#e2e8f0",
-        border: "1px solid rgba(34, 211, 238, 0.4)"
+    const syncLevel = async () => {
+      try {
+        if (walletAddress) {
+          const response = await fetch(LEVEL_UP_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ walletAddress })
+          });
+          if (response.ok) {
+            const data = await response.json();
+            if (data?.level) {
+              setCurrentLevel(Number(data.level));
+            }
+          }
+        }
+      } catch {
+        // Ignore sync failures; UI will refresh on next stats fetch.
       }
-    });
-    if (levelUpGlowTimerRef.current) {
-      window.clearTimeout(levelUpGlowTimerRef.current);
-    }
-    levelUpGlowTimerRef.current = window.setTimeout(() => {
-      setShowLevelUpGlow(false);
-    }, 1600);
-  }, [isLevelUpSuccess, refetchLifeBalance]);
+      triggerConfettiBurst(1800);
+      setShowLevelUpGlow(true);
+      void refetchLifeBalance();
+      void refreshStats();
+      toast.success("Level Up!", {
+        style: {
+          background: "#0f172a",
+          color: "#e2e8f0",
+          border: "1px solid rgba(34, 211, 238, 0.4)"
+        }
+      });
+      if (levelUpGlowTimerRef.current) {
+        window.clearTimeout(levelUpGlowTimerRef.current);
+      }
+      levelUpGlowTimerRef.current = window.setTimeout(() => {
+        setShowLevelUpGlow(false);
+      }, 1600);
+    };
+
+    void syncLevel();
+  }, [isLevelUpSuccess, refetchLifeBalance, refreshStats, triggerConfettiBurst, walletAddress]);
 
   useEffect(() => {
     if (!isMintSuccess) return;
@@ -1369,24 +1413,24 @@ function HomeContent() {
                   </div>
                   <p className="mt-2 text-xs text-slate-400">
                     XP{" "}
-                    <span className="font-mono text-slate-100">{CURRENT_XP}</span>{" "}
-                    / <span className="font-mono">{NEXT_LEVEL_XP}</span>
+                    <span className="font-mono text-slate-100">{xpCurrent}</span>{" "}
+                    / <span className="font-mono">{nextLevelXp}</span>
                   </p>
                   <div
                     className={`mt-4 h-2 w-full overflow-hidden rounded-full bg-slate-800/80 ${
-                      IS_NEAR_GOAL ? "ring-1 ring-cyan-400/50 animate-pulse" : ""
+                      isNearGoal ? "ring-1 ring-cyan-400/50 animate-pulse" : ""
                     }`}
                   >
                     <div
                       className="h-full rounded-full bg-gradient-to-r from-purple-500 via-cyan-400 to-cyan-300 shadow-[0_0_12px_rgba(34,211,238,0.7)]"
-                      style={{ width: `${LEVEL_PROGRESS}%` }}
+                      style={{ width: `${levelProgress}%` }}
                     />
                   </div>
                   <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400">
                     <span>
-                      Obiettivo: <span className="font-mono">2.000</span> XP
+                      Obiettivo: <span className="font-mono">{nextLevelXp}</span> XP
                     </span>
-                    <span className="font-mono">{LEVEL_PROGRESS}%</span>
+                    <span className="font-mono">{levelProgress}%</span>
                   </div>
                   {isWalletConnected ? (
                     <button

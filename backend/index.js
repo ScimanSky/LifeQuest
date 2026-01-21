@@ -38,6 +38,7 @@ const IRON_PROTOCOL_TYPES = new Set([
 ]);
 const MINDFULNESS_TYPES = new Set(["Yoga", "Meditation", "Mindfulness"]);
 const MINDFULNESS_MIN_SECONDS = 600;
+const LEVEL_XP = 2000;
 const WEEKLY_GOALS = {
   run: 2,
   swim: 2,
@@ -158,7 +159,8 @@ function createDefaultWalletDb() {
     stats: {
       gymSessions: 0,
       zenSessions: 0
-    }
+    },
+    level: 1
   };
 }
 
@@ -238,6 +240,7 @@ function getWalletDb(store, wallet) {
   }
   db.stats.gymSessions = Number(db.stats.gymSessions) || 0;
   db.stats.zenSessions = Number(db.stats.zenSessions) || 0;
+  db.level = Number(db.level) || 1;
   return db;
 }
 function computeXpMissing(balanceWei) {
@@ -246,6 +249,17 @@ function computeXpMissing(balanceWei) {
   const xpPerLevel = 2000n;
   const nextLevelXp = (balanceTokens / xpPerLevel + 1n) * xpPerLevel;
   return nextLevelXp - balanceTokens;
+}
+
+function computeXpTotal(activities, db) {
+  const activityXp = activities.reduce((sum, activity) => {
+    return sum + (Number(activity?.reward) || 0);
+  }, 0);
+  const bonuses = Array.isArray(db.weeklyBonuses) ? db.weeklyBonuses : [];
+  const bonusXp = bonuses.reduce((sum, bonus) => {
+    return sum + (Number(bonus?.reward) || 0);
+  }, 0);
+  return activityXp + bonusXp;
 }
 
 function getWeekBounds(reference) {
@@ -571,7 +585,8 @@ app.get("/user/stats", async (req, res) => {
     }
     const balanceWei = await fetchBalance(wallet);
     const rank = computeRank(balanceWei);
-    const xpMissing = computeXpMissing(balanceWei);
+    const store = loadPaidActivitiesStore();
+    const activities = getWalletActivities(store, wallet);
 
     const dbStore = loadDatabase();
     const db = getWalletDb(dbStore, wallet);
@@ -579,6 +594,13 @@ app.get("/user/stats", async (req, res) => {
       ? db.unlockedBadges
       : [];
     const badges = db.badges && typeof db.badges === "object" ? db.badges : {};
+
+    const xpTotal = computeXpTotal(activities, db);
+    const currentLevel = Number(db.level) || 1;
+    const baseXp = Math.max(0, (currentLevel - 1) * LEVEL_XP);
+    const xpCurrentRaw = Math.max(0, xpTotal - baseXp);
+    const xpCurrent = Math.min(xpCurrentRaw, LEVEL_XP);
+    const xpMissing = Math.max(0, LEVEL_XP - xpCurrent);
 
     const ignitionUnlocked = balanceWei > ethers.parseUnits("1500", 18);
     if (ignitionUnlocked) {
@@ -598,6 +620,10 @@ app.get("/user/stats", async (req, res) => {
       balance: ethers.formatUnits(balanceWei, 18),
       rank,
       xpMissing: xpMissing.toString(),
+      level: currentLevel,
+      xpCurrent: xpCurrent.toString(),
+      nextLevelXp: LEVEL_XP.toString(),
+      xpTotal: xpTotal.toString(),
       unlockedBadges,
       badges
     });
@@ -714,6 +740,32 @@ app.post("/strava/sync", async (req, res) => {
   } catch (err) {
     console.error("Strava sync error:", err);
     return res.status(500).json({ status: "error", message: "Errore interno" });
+  }
+});
+
+app.post("/user/level-up", (req, res) => {
+  try {
+    const wallet = normalizeWallet(req.body?.walletAddress || req.query?.wallet);
+    if (!wallet) {
+      return res.status(400).json({ error: "Wallet non valido" });
+    }
+    const store = loadPaidActivitiesStore();
+    const activities = getWalletActivities(store, wallet);
+    const dbStore = loadDatabase();
+    const db = getWalletDb(dbStore, wallet);
+    const xpTotal = computeXpTotal(activities, db);
+    const currentLevel = Number(db.level) || 1;
+    const baseXp = Math.max(0, (currentLevel - 1) * LEVEL_XP);
+    const xpCurrent = Math.max(0, xpTotal - baseXp);
+    if (xpCurrent < LEVEL_XP) {
+      return res.status(400).json({ error: "XP insufficienti" });
+    }
+    db.level = currentLevel + 1;
+    saveDatabase(dbStore);
+    return res.json({ level: db.level });
+  } catch (err) {
+    console.error("Level up error:", err);
+    return res.status(500).json({ error: "Errore interno" });
   }
 });
 
