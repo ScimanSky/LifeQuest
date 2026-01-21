@@ -20,3 +20,8 @@ dist/
 
 # Hardhat Ignition default folder for deployments against a local node
 ignition/deployments/chain-31337
+# Local Database & Secrets
+database.json
+database_OLD.json
+strava_tokens.json
+strava_tokens_OLD.json

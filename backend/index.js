@@ -44,7 +44,11 @@ const IRON_PROTOCOL_TYPES = new Set([
   "Crossfit"
 ]);
 const MINDFULNESS_TYPES = new Set(["Yoga", "Meditation", "Mindfulness"]);
-const ARENA_GYM_TYPES = new Set([...IRON_PROTOCOL_TYPES, ...MINDFULNESS_TYPES]);
+const ARENA_GYM_TYPES = new Set([
+  ...IRON_PROTOCOL_TYPES,
+  ...MINDFULNESS_TYPES,
+  "Iron Protocol"
+]);
 const MINDFULNESS_MIN_SECONDS = 600;
 const LEVEL_XP = 2000;
 const WEEKLY_GOALS = {
@@ -509,6 +513,21 @@ function computeWeeklyGoalCounts(activities, reference) {
   return counts;
 }
 
+function filterActivitiesByRange(activities, startAt, endAt) {
+  if (!startAt || !endAt) return [];
+  const start = new Date(startAt).getTime();
+  const end = new Date(endAt).getTime();
+  if (Number.isNaN(start) || Number.isNaN(end)) return [];
+  return (activities || []).filter((activity) => {
+    if (!activity) return false;
+    const dateValue = getActivityDate(activity);
+    if (!dateValue) return false;
+    const timestamp = new Date(dateValue).getTime();
+    if (Number.isNaN(timestamp)) return false;
+    return timestamp >= start && timestamp <= end;
+  });
+}
+
 function checkPerfectWeekBonus(activities, db) {
   const now = new Date();
   const { start } = getWeekBounds(now);
@@ -874,85 +893,37 @@ async function resolveArenaChallenge(challenge) {
     fetchStravaToken(opponent)
   ]);
   const missingWallets = [];
-  if (!creatorToken?.refresh_token) missingWallets.push(creator);
-  if (!opponentToken?.refresh_token) missingWallets.push(opponent);
+  const [creatorActivitiesRaw, opponentActivitiesRaw] = await Promise.all([
+    fetchMintedActivities(creator),
+    fetchMintedActivities(opponent)
+  ]);
+
+  const creatorActivities = filterActivitiesByRange(
+    creatorActivitiesRaw,
+    startAt,
+    endAt
+  );
+  const opponentActivities = filterActivitiesByRange(
+    opponentActivitiesRaw,
+    startAt,
+    endAt
+  );
+
+  const creatorProgress = computeArenaProgress(creatorActivities, challenge.type);
+  const opponentProgress = computeArenaProgress(opponentActivities, challenge.type);
+
+  if (!creatorToken?.refresh_token && creatorActivities.length === 0) {
+    missingWallets.push(creator);
+  }
+  if (!opponentToken?.refresh_token && opponentActivities.length === 0) {
+    missingWallets.push(opponent);
+  }
   if (missingWallets.length > 0 && !ARENA_TEST_MODE) {
     return { status: "missing_tokens", missing_wallets: missingWallets };
   }
-
   if (!creatorToken?.refresh_token && !opponentToken?.refresh_token) {
     return { status: "missing_tokens", missing_wallets: missingWallets };
   }
-
-  let creatorProgress = getCachedArenaProgress(
-    creator,
-    challenge.type,
-    startAt,
-    endAt
-  );
-  let opponentProgress = getCachedArenaProgress(
-    opponent,
-    challenge.type,
-    startAt,
-    endAt
-  );
-
-  if (creatorProgress === null && creatorToken?.refresh_token) {
-    try {
-      const creatorActivities = await fetchActivitiesInRange(
-        await refreshStravaAccessToken(
-          creator,
-          creatorToken.refresh_token,
-          creatorToken.athlete_id
-        ),
-        startAt,
-        endAt
-      );
-      creatorProgress = computeArenaProgress(creatorActivities, challenge.type);
-      setCachedArenaProgress(creator, challenge.type, startAt, endAt, creatorProgress);
-    } catch (error) {
-      if (isStravaRateLimitError(error)) {
-        return {
-          status: "rate_limited",
-          retry_after: error.retryAfter || 60
-        };
-      }
-      throw error;
-    }
-  }
-
-  if (opponentProgress === null && opponentToken?.refresh_token) {
-    try {
-      const opponentActivities = await fetchActivitiesInRange(
-        await refreshStravaAccessToken(
-          opponent,
-          opponentToken.refresh_token,
-          opponentToken.athlete_id
-        ),
-        startAt,
-        endAt
-      );
-      opponentProgress = computeArenaProgress(opponentActivities, challenge.type);
-      setCachedArenaProgress(
-        opponent,
-        challenge.type,
-        startAt,
-        endAt,
-        opponentProgress
-      );
-    } catch (error) {
-      if (isStravaRateLimitError(error)) {
-        return {
-          status: "rate_limited",
-          retry_after: error.retryAfter || 60
-        };
-      }
-      throw error;
-    }
-  }
-
-  if (!creatorToken?.refresh_token) creatorProgress = 0;
-  if (!opponentToken?.refresh_token) opponentProgress = 0;
 
   const diff = creatorProgress - opponentProgress;
   const epsilon = 0.0001;
@@ -1009,85 +980,37 @@ async function updateArenaProgress(challenge) {
     fetchStravaToken(opponent)
   ]);
   const missingWallets = [];
-  if (!creatorToken?.refresh_token) missingWallets.push(creator);
-  if (!opponentToken?.refresh_token) missingWallets.push(opponent);
+  const [creatorActivitiesRaw, opponentActivitiesRaw] = await Promise.all([
+    fetchMintedActivities(creator),
+    fetchMintedActivities(opponent)
+  ]);
+
+  const creatorActivities = filterActivitiesByRange(
+    creatorActivitiesRaw,
+    startAt,
+    rangeEnd
+  );
+  const opponentActivities = filterActivitiesByRange(
+    opponentActivitiesRaw,
+    startAt,
+    rangeEnd
+  );
+
+  const creatorProgress = computeArenaProgress(creatorActivities, challenge.type);
+  const opponentProgress = computeArenaProgress(opponentActivities, challenge.type);
+
+  if (!creatorToken?.refresh_token && creatorActivities.length === 0) {
+    missingWallets.push(creator);
+  }
+  if (!opponentToken?.refresh_token && opponentActivities.length === 0) {
+    missingWallets.push(opponent);
+  }
   if (missingWallets.length > 0 && !ARENA_TEST_MODE) {
     return { status: "missing_tokens", missing_wallets: missingWallets };
   }
-
   if (!creatorToken?.refresh_token && !opponentToken?.refresh_token) {
     return { status: "missing_tokens", missing_wallets: missingWallets };
   }
-
-  let creatorProgress = getCachedArenaProgress(
-    creator,
-    challenge.type,
-    startAt,
-    endAt
-  );
-  let opponentProgress = getCachedArenaProgress(
-    opponent,
-    challenge.type,
-    startAt,
-    endAt
-  );
-
-  if (creatorProgress === null && creatorToken?.refresh_token) {
-    try {
-      const creatorActivities = await fetchActivitiesInRange(
-        await refreshStravaAccessToken(
-          creator,
-          creatorToken.refresh_token,
-          creatorToken.athlete_id
-        ),
-        startAt,
-        rangeEnd
-      );
-      creatorProgress = computeArenaProgress(creatorActivities, challenge.type);
-      setCachedArenaProgress(creator, challenge.type, startAt, endAt, creatorProgress);
-    } catch (error) {
-      if (isStravaRateLimitError(error)) {
-        return {
-          status: "rate_limited",
-          retry_after: error.retryAfter || 60
-        };
-      }
-      throw error;
-    }
-  }
-
-  if (opponentProgress === null && opponentToken?.refresh_token) {
-    try {
-      const opponentActivities = await fetchActivitiesInRange(
-        await refreshStravaAccessToken(
-          opponent,
-          opponentToken.refresh_token,
-          opponentToken.athlete_id
-        ),
-        startAt,
-        rangeEnd
-      );
-      opponentProgress = computeArenaProgress(opponentActivities, challenge.type);
-      setCachedArenaProgress(
-        opponent,
-        challenge.type,
-        startAt,
-        endAt,
-        opponentProgress
-      );
-    } catch (error) {
-      if (isStravaRateLimitError(error)) {
-        return {
-          status: "rate_limited",
-          retry_after: error.retryAfter || 60
-        };
-      }
-      throw error;
-    }
-  }
-
-  if (!creatorToken?.refresh_token) creatorProgress = 0;
-  if (!opponentToken?.refresh_token) opponentProgress = 0;
 
   await updateChallengeById(challenge.id, {
     creator_progress: creatorProgress,
