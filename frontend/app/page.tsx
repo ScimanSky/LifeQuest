@@ -36,7 +36,7 @@ const LEVEL_UP_URL = `${BACKEND_BASE_URL}/user/level-up`;
 const SEEN_BADGES_KEY = "lifequest:seen-badges";
 const STRAVA_SYNCED_KEY = "lifequest:strava-synced";
 const BALANCE_REFRESH_KEY = "lifequest:balance-refresh";
-const ACTIVITIES_PREVIEW_LIMIT = 6;
+const ACTIVITIES_PREVIEW_LIMIT = 4;
 const LEVEL_XP = 2000;
 const LEVEL_UP_COST = 500;
 const BURN_ADDRESS = "0x000000000000000000000000000000000000dEaD" as Address;
@@ -1483,64 +1483,6 @@ function HomeContent() {
                       </p>
                     </div>
                   </div>
-                  <div className="relative mt-4 overflow-hidden rounded-2xl border border-white/10 bg-slate-950/60 p-3">
-                    <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.12),transparent_55%)]" />
-                    <div className="pointer-events-none absolute -top-24 right-10 h-40 w-40 rounded-full bg-amber-400/10 blur-3xl" />
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
-                        I Tuoi Trofei
-                      </p>
-                      <span className="text-[11px] text-slate-400">Bacheca</span>
-                    </div>
-                    <div className="mt-3 flex gap-3 overflow-x-auto pb-3 snap-x snap-mandatory">
-                      {trophyBadges.map((badge) => {
-                        const unlocked = Boolean(
-                          resolvedBadgeUnlocks[badge.id as keyof typeof resolvedBadgeUnlocks]
-                        );
-                        return (
-                          <div
-                            key={badge.id}
-                            className={`group relative min-w-[160px] snap-start overflow-hidden rounded-2xl border border-white/10 bg-slate-900/60 p-3 text-center transition-all duration-500 ${
-                              unlocked
-                                ? "hover:-translate-y-0.5 hover:shadow-[0_0_28px_rgba(251,146,60,0.45)]"
-                                : "opacity-90"
-                            }`}
-                          >
-                            <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,transparent,rgba(56,189,248,0.08),transparent)] opacity-0 transition-opacity duration-700 group-hover:opacity-100" />
-                            {unlocked ? (
-                              <span className="pointer-events-none absolute inset-0 lifequest-trophy-shine" />
-                            ) : null}
-                            {unlocked ? (
-                              <span className="pointer-events-none absolute -top-8 -right-8 h-20 w-20 rounded-full bg-amber-400/20 blur-2xl" />
-                            ) : null}
-                            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-950/70 ring-1 ring-white/5">
-                              <img
-                                src={badge.image}
-                                alt={badge.name}
-                                className={`h-12 w-12 ${
-                                  unlocked
-                                    ? `opacity-100 ${badge.glow} group-hover:shadow-[0_0_18px_rgba(251,146,60,0.6)]`
-                                    : "opacity-40 grayscale"
-                                }`}
-                                loading="lazy"
-                              />
-                            </div>
-                            <p className="mt-3 text-sm font-semibold text-white">
-                              {badge.name}
-                            </p>
-                            <p className="mt-1 text-[11px] text-slate-400">
-                              {unlocked ? "Sbloccato" : badge.requirement}
-                            </p>
-                            {unlocked ? (
-                              <span className="mt-2 inline-flex items-center justify-center rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-200">
-                                Trophy
-                              </span>
-                            ) : null}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
                 </div>
               </>
             ) : (
@@ -1778,9 +1720,67 @@ function HomeContent() {
             </div>
           </section>
 
-          <section className="col-span-12 lg:col-span-4 flex flex-col lg:min-h-0">
+          <section className="col-span-12 lg:col-span-4 flex flex-col gap-4 lg:min-h-0">
+            <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-slate-900/40 p-4 shadow-2xl backdrop-blur-xl">
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.12),transparent_55%)]" />
+              <div className="pointer-events-none absolute -top-24 right-10 h-40 w-40 rounded-full bg-amber-400/10 blur-3xl" />
+              <div className="flex items-center justify-between">
+                <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
+                  I Tuoi Trofei
+                </p>
+                <span className="text-[11px] text-slate-400">Bacheca</span>
+              </div>
+              <div className="mt-3 flex gap-3 overflow-x-auto pb-3 snap-x snap-mandatory">
+                {trophyBadges.map((badge) => {
+                  const unlocked = Boolean(
+                    resolvedBadgeUnlocks[badge.id as keyof typeof resolvedBadgeUnlocks]
+                  );
+                  return (
+                    <div
+                      key={badge.id}
+                      className={`group relative min-w-[160px] snap-start overflow-hidden rounded-2xl border border-white/10 bg-slate-900/60 p-3 text-center transition-all duration-500 ${
+                        unlocked
+                          ? "hover:-translate-y-0.5 hover:shadow-[0_0_28px_rgba(251,146,60,0.45)]"
+                          : "opacity-90"
+                      }`}
+                    >
+                      <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,transparent,rgba(56,189,248,0.08),transparent)] opacity-0 transition-opacity duration-700 group-hover:opacity-100" />
+                      {unlocked ? (
+                        <span className="pointer-events-none absolute inset-0 lifequest-trophy-shine" />
+                      ) : null}
+                      {unlocked ? (
+                        <span className="pointer-events-none absolute -top-8 -right-8 h-20 w-20 rounded-full bg-amber-400/20 blur-2xl" />
+                      ) : null}
+                      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-950/70 ring-1 ring-white/5">
+                        <img
+                          src={badge.image}
+                          alt={badge.name}
+                          className={`h-12 w-12 ${
+                            unlocked
+                              ? `opacity-100 ${badge.glow} group-hover:shadow-[0_0_18px_rgba(251,146,60,0.6)]`
+                              : "opacity-40 grayscale"
+                          }`}
+                          loading="lazy"
+                        />
+                      </div>
+                      <p className="mt-3 text-sm font-semibold text-white">
+                        {badge.name}
+                      </p>
+                      <p className="mt-1 text-[11px] text-slate-400">
+                        {unlocked ? "Sbloccato" : badge.requirement}
+                      </p>
+                      {unlocked ? (
+                        <span className="mt-2 inline-flex items-center justify-center rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-200">
+                          Trophy
+                        </span>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
             <div
-              className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-5 flex flex-col lg:min-h-0 transition-all duration-500 ${
+              className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-5 flex flex-col flex-1 lg:min-h-0 transition-all duration-500 ${
                 isDisconnected ? "grayscale-[0.3] saturate-75" : ""
               } ${isActivitiesExpanded ? "" : "lg:h-full"}`}
             >
