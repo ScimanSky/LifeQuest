@@ -1251,7 +1251,7 @@ function HomeContent() {
         <div className="pointer-events-none fixed inset-0 z-40 bg-fuchsia-500/20 animate-pulse" />
       ) : null}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.08),transparent_55%)]" />
-      <div className="relative z-10 min-h-full max-w-[1400px] mx-auto flex flex-col gap-4 lg:h-full">
+      <div className="relative z-10 min-h-full max-w-[1400px] mx-auto flex flex-col gap-3 lg:h-full">
         <header
           className={`flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between ${
             isDisconnected ? "grayscale-[0.25] saturate-75" : ""
@@ -1283,15 +1283,15 @@ function HomeContent() {
               ref={walletMenuRef}
               className="relative"
               onMouseEnter={() => setIsWalletMenuOpen(true)}
-              onMouseLeave={() => setIsWalletMenuOpen(false)}
             >
               <button
                 type="button"
                 onClick={() => setIsWalletMenuOpen((prev) => !prev)}
-                className="inline-flex items-center rounded-full border border-white/10 bg-slate-900/60 px-3 py-2 text-xs font-semibold text-slate-100 transition hover:border-white/20"
+                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-slate-900/60 px-4 py-2 text-xs font-semibold text-slate-100 transition hover:border-white/20"
                 aria-label="Apri menu wallet"
               >
-                <Wallet className="h-4 w-4" />
+                <Wallet className="h-5 w-5" />
+                <span className="hidden sm:inline">Wallet</span>
               </button>
               {isWalletMenuOpen ? (
                 <div className="absolute right-0 z-30 mt-2 w-72 rounded-2xl border border-white/10 bg-slate-900/95 p-4 shadow-2xl backdrop-blur-xl">
@@ -1456,7 +1456,7 @@ function HomeContent() {
           </div>
         </div>
 
-        <section className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:flex-1 lg:min-h-0">
+        <section className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:flex-1 lg:min-h-0">
           <aside className="col-span-12 lg:col-span-3 flex flex-col gap-4 lg:min-h-0">
             <div
               className={`flex items-center justify-between ${
@@ -1595,16 +1595,16 @@ function HomeContent() {
             )}
           </aside>
 
-          <section className="col-span-12 lg:col-span-5 flex flex-col gap-4 lg:min-h-0">
+          <section className="col-span-12 lg:col-span-5 flex flex-col gap-3 lg:min-h-0">
             <div
-              className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-5 flex flex-col min-h-0 transition-all duration-500 ${
+              className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-3 sm:p-4 lg:p-3 flex flex-col min-h-0 transition-all duration-500 ${
                 isDisconnected ? "grayscale-[0.3] saturate-75" : ""
               }`}
             >
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs uppercase tracking-[0.3em] text-purple-500">MISSIONI</p>
-                  <h2 className="text-xl font-semibold text-white">Obiettivi Settimanali</h2>
+                  <h2 className="text-lg font-semibold text-white">Obiettivi Settimanali</h2>
                 </div>
                 <StatusBadge label="4 Obiettivi" tone="neutral" />
               </div>
@@ -1612,12 +1612,12 @@ function HomeContent() {
               {isWalletConnected ? (
                 <>
                   {perfectWeekComplete ? (
-                    <div className="mt-4 rounded-2xl border border-amber-400/50 bg-amber-500/10 px-4 py-3 text-center text-sm font-semibold text-amber-200 shadow-[0_0_18px_rgba(251,191,36,0.35)]">
+                    <div className="mt-2 rounded-2xl border border-amber-400/50 bg-amber-500/10 px-3 py-2 text-center text-xs font-semibold text-amber-200 shadow-[0_0_18px_rgba(251,191,36,0.35)]">
                       PERFECT WEEK RAGGIUNTA! +200 LIFE
                     </div>
                   ) : (
-                    <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 transition-all duration-500">
-                      <div className="flex items-center justify-between text-[11px] text-slate-300">
+                    <div className="mt-2 rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 transition-all duration-500">
+                      <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-slate-300">
                         <span className="uppercase tracking-[0.2em] text-slate-400">
                           Progressi Settimana Perfetta
                         </span>
@@ -1625,13 +1625,13 @@ function HomeContent() {
                           {perfectWeekCompletedCount}/4
                         </span>
                       </div>
-                      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-800/80">
+                      <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-slate-800/80 sm:h-1.5">
                         <div
                           className="h-full rounded-full bg-gradient-to-r from-purple-500 via-cyan-400 to-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.6)]"
                           style={{ width: `${(perfectWeekCompletedCount / 4) * 100}%` }}
                         />
                       </div>
-                      <div className="mt-3 flex items-center gap-2">
+                      <div className="mt-2 flex items-center gap-2">
                         {Array.from({ length: 4 }).map((_, index) => (
                           <span
                             key={`perfect-week-${index}`}
@@ -1646,9 +1646,9 @@ function HomeContent() {
                     </div>
                   )}
 
-                  <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
                     <MissionCard
-                      icon={<Activity className="h-8 w-8 text-purple-500" />}
+                      icon={<Activity className="h-6 w-6 text-purple-500 sm:h-8 sm:w-8" />}
                       title="Corsa"
                       description="Run su Strava sopra 5 km."
                       reward="10"
@@ -1669,7 +1669,7 @@ function HomeContent() {
                       }
                     />
                     <MissionCard
-                      icon={<Droplet className="h-8 w-8 text-cyan-400" />}
+                      icon={<Droplet className="h-6 w-6 text-cyan-400 sm:h-8 sm:w-8" />}
                       title="Nuoto"
                       description="Swim su Strava sopra 1 km."
                       reward="20"
@@ -1690,7 +1690,7 @@ function HomeContent() {
                       }
                     />
                     <MissionCard
-                      icon={<Dumbbell className="h-8 w-8 text-purple-400" />}
+                      icon={<Dumbbell className="h-6 w-6 text-purple-400 sm:h-8 sm:w-8" />}
                       title="Iron Protocol"
                       description="Sessione palestra su Strava."
                       reward="10"
@@ -1711,7 +1711,7 @@ function HomeContent() {
                       }
                     />
                     <MissionCard
-                      icon={<Leaf className="h-8 w-8 text-emerald-400" />}
+                      icon={<Leaf className="h-6 w-6 text-emerald-400 sm:h-8 sm:w-8" />}
                       title="Mindfulness"
                       description="Yoga o recupero guidato."
                       reward="10"
@@ -2035,7 +2035,7 @@ function MissionCard({
     <button
       type="button"
       onClick={onClick}
-      className={`group relative w-full overflow-hidden rounded-2xl border bg-slate-900/40 backdrop-blur-xl border-white/10 shadow-2xl p-5 text-left transition-all duration-500 ${
+      className={`group relative w-full overflow-hidden rounded-2xl border bg-slate-900/40 backdrop-blur-xl border-white/10 shadow-2xl p-3 sm:p-4 lg:p-3 text-left transition-all duration-500 ${
         isCompleted
           ? "border-cyan-400/70 bg-cyan-500/10 shadow-[0_0_25px_rgba(34,211,238,0.35)]"
           : isActive
@@ -2048,15 +2048,15 @@ function MissionCard({
         <span className="pointer-events-none absolute inset-0 rounded-2xl bg-cyan-400/5 animate-pulse" />
       ) : null}
       <span className="pointer-events-none absolute -top-8 right-6 h-20 w-20 rounded-full bg-cyan-500/10 blur-2xl opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-start gap-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-2 sm:gap-3">
           <div className="mt-1 transform group-hover:scale-105 transition-transform">{icon}</div>
           <div>
-            <h3 className="text-lg font-semibold text-white">{title}</h3>
+            <h3 className="text-sm font-semibold text-white sm:text-base">{title}</h3>
             {sparkline ? (
-              <div className="mt-2 flex items-end gap-1">
+              <div className="mt-1 flex items-end gap-1">
                 {sparkline.map((value, index) => {
-                  const height = Math.max(2, Math.round((value / sparklineMax) * 12));
+                  const height = Math.max(2, Math.round((value / sparklineMax) * 10));
                   return (
                     <span
                       key={`${title}-spark-${index}`}
@@ -2067,20 +2067,24 @@ function MissionCard({
                 })}
               </div>
             ) : null}
-            <p className="mt-1 text-xs text-slate-400">{description}</p>
+            <p className="mt-1 text-[11px] text-slate-400 sm:text-xs">{description}</p>
             {status ? (
-              <span className="mt-2 inline-flex rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-semibold text-slate-300 font-mono">
+              <span className="mt-1 inline-flex rounded-full border border-white/10 px-2 py-0.5 text-[9px] font-semibold text-slate-300 font-mono sm:text-[10px]">
                 {status}
               </span>
             ) : null}
           </div>
         </div>
         <div className="text-right">
-          <span className="text-[10px] text-slate-500 uppercase tracking-widest">Premio</span>
+          <span className="text-[9px] text-slate-500 uppercase tracking-widest sm:text-[10px]">
+            Premio
+          </span>
           {hideReward ? (
-            <span className="mt-1 block text-xs text-slate-400">Connetti il wallet</span>
+            <span className="mt-1 block text-[11px] text-slate-400 sm:text-xs">
+              Connetti il wallet
+            </span>
           ) : (
-            <span className="mt-1 block text-sm font-bold text-purple-300 font-mono">
+            <span className="mt-1 block text-xs font-bold text-purple-300 font-mono sm:text-sm">
               +{reward} LIFE
             </span>
           )}
@@ -2088,7 +2092,7 @@ function MissionCard({
       </div>
 
       {!hideReward ? (
-        <div className="mt-4 flex items-center justify-between">
+        <div className="mt-2 flex items-center justify-between">
           <div className="flex items-center gap-1">
             {Array.from({ length: safeTarget }).map((_, index) => (
               <span
