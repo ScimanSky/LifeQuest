@@ -183,7 +183,7 @@ export default function ArenaPage() {
   const [isApproving, setIsApproving] = useState(false);
   const [isTransferring, setIsTransferring] = useState(false);
   const [acceptingChallengeId, setAcceptingChallengeId] = useState<string | null>(null);
-  const [acceptStage, setAcceptStage] = useState<"approving" | "transferring" | "updating" | null>(null);
+  const [acceptStage, setAcceptStage] = useState<"transferring" | "updating" | null>(null);
   const [acceptError, setAcceptError] = useState<string | null>(null);
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
@@ -193,15 +193,6 @@ export default function ArenaPage() {
     abi: LIFE_TOKEN_ABI,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
-    query: {
-      enabled: Boolean(address)
-    }
-  });
-  const { data: allowanceValue, refetch: refetchAllowance } = useReadContract({
-    address: LIFE_TOKEN_ADDRESS,
-    abi: LIFE_TOKEN_ABI,
-    functionName: "allowance",
-    args: address ? [address, OWNER_ADDRESS] : undefined,
     query: {
       enabled: Boolean(address)
     }
@@ -390,26 +381,12 @@ export default function ArenaPage() {
 
       try {
         const stakeWei = parseEther(stakeValue.toString());
-        const allowanceResult = await refetchAllowance();
-        const allowance = allowanceResult.data ?? allowanceValue ?? BigInt(0);
-
-        if (allowance < stakeWei) {
-          setAcceptStage("approving");
-          const approveHash = await writeContractAsync({
-            address: LIFE_TOKEN_ADDRESS,
-            abi: LIFE_TOKEN_ABI,
-            functionName: "approve",
-            args: [OWNER_ADDRESS, stakeWei]
-          });
-          await publicClient.waitForTransactionReceipt({ hash: approveHash });
-        }
-
         setAcceptStage("transferring");
         const transferHash = await writeContractAsync({
           address: LIFE_TOKEN_ADDRESS,
           abi: LIFE_TOKEN_ABI,
           functionName: "transfer",
-          args: [OWNER_ADDRESS, stakeWei]
+          args: [BURN_ADDRESS, stakeWei]
         });
         await publicClient.waitForTransactionReceipt({ hash: transferHash });
 
@@ -437,7 +414,7 @@ export default function ArenaPage() {
         setAcceptingChallengeId(null);
       }
     },
-    [address, allowanceValue, fetchChallenges, publicClient, refetchAllowance, writeContractAsync]
+    [address, fetchChallenges, publicClient, writeContractAsync]
   );
 
   return (
@@ -561,13 +538,11 @@ export default function ArenaPage() {
                   isConnected && !isCreator && duel.status === "active";
                 const isAccepting = acceptingChallengeId === duel.id;
                 const acceptLabel =
-                  acceptStage === "approving" && isAccepting
-                    ? "Approvo..."
-                    : acceptStage === "transferring" && isAccepting
-                      ? "Invio LIFE..."
-                      : acceptStage === "updating" && isAccepting
-                        ? "Entro in Arena..."
-                        : "Accetta";
+                  acceptStage === "transferring" && isAccepting
+                    ? "Invio LIFE..."
+                    : acceptStage === "updating" && isAccepting
+                      ? "Entro in Arena..."
+                      : "Accetta";
 
                 const statusLabel =
                   duel.status === "matched" ? "Matched" : "Open";
