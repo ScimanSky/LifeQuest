@@ -1986,7 +1986,7 @@ function MissionCard({
       ) : null}
       <span className="pointer-events-none absolute -top-8 right-6 h-20 w-20 rounded-full bg-cyan-500/10 blur-2xl opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
       {isCompleted ? (
-        <span className="absolute right-3 top-3 rounded-full border border-cyan-400/60 bg-cyan-500/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-cyan-200">
+        <span className="absolute left-3 top-3 rounded-full border border-cyan-400/60 bg-cyan-500/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-cyan-200">
           Checked
         </span>
       ) : null}
