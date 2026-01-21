@@ -1571,7 +1571,7 @@ function HomeContent() {
             {isWalletConnected ? (
               <>
                 <div
-                  className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-4 transition-all duration-500 flex flex-col flex-1 h-full lg:min-h-[480px] ${
+                  className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-4 transition-all duration-500 flex flex-col flex-1 h-full lg:h-[520px] ${
                     showLevelUpGlow
                       ? "ring-2 ring-amber-400/60 shadow-[0_0_30px_rgba(251,191,36,0.4)]"
                       : ""
@@ -1695,7 +1695,7 @@ function HomeContent() {
 
           <section className="col-span-12 lg:col-span-5 flex flex-col gap-3 lg:min-h-0 lg:h-full">
             <div
-              className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-3 sm:p-4 lg:p-3 flex flex-col min-h-0 transition-all duration-500 lg:min-h-[480px] ${
+              className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-3 sm:p-4 lg:p-3 flex flex-col min-h-0 transition-all duration-500 lg:h-[520px] ${
                 isDisconnected ? "grayscale-[0.3] saturate-75" : ""
               }`}
             >
@@ -1883,7 +1883,7 @@ function HomeContent() {
 
           <section className="col-span-12 lg:col-span-4 flex flex-col gap-3 lg:min-h-0 lg:h-full">
             <div
-              className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-4 flex flex-col flex-1 h-full lg:min-h-[480px] transition-all duration-500 ${
+              className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-4 flex flex-col flex-1 h-full lg:h-[520px] transition-all duration-500 lg:overflow-hidden ${
                 isDisconnected ? "grayscale-[0.3] saturate-75" : ""
               } ${isActivitiesExpanded ? "" : "lg:h-full"}`}
             >
@@ -1978,7 +1978,7 @@ function HomeContent() {
                   </div>
                 </div>
               ) : (
-                <div className="mt-4 flex flex-col">
+                <div className="mt-4 flex flex-1 flex-col">
                   <div className="space-y-3">
                     {isLoading ? (
                       <StatusBadge label="Caricamento attività..." tone="neutral" />
@@ -2043,7 +2043,7 @@ function HomeContent() {
                     <button
                       type="button"
                       onClick={() => setShowAllActivities((prev) => !prev)}
-                      className="mt-4 inline-flex items-center justify-center rounded-full border border-cyan-400/40 px-4 py-2 text-xs font-semibold text-cyan-100 transition hover:border-cyan-300/70 hover:text-cyan-50"
+                      className="mt-auto inline-flex items-center justify-center rounded-full border border-cyan-400/40 px-4 py-2 text-xs font-semibold text-cyan-100 transition hover:border-cyan-300/70 hover:text-cyan-50"
                     >
                       {isActivitiesExpanded ? "Nascondi" : "Mostra di piu"}
                     </button>
