@@ -1253,7 +1253,7 @@ function HomeContent() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.08),transparent_55%)]" />
       <div className="relative z-10 min-h-full max-w-[1400px] mx-auto flex flex-col gap-3 lg:h-full">
         <header
-          className={`flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between ${
+          className={`relative z-40 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between ${
             isDisconnected ? "grayscale-[0.25] saturate-75" : ""
           }`}
         >
@@ -1301,7 +1301,7 @@ function HomeContent() {
                 <span className="hidden sm:inline">Wallet</span>
               </button>
               {isWalletMenuOpen ? (
-                <div className="absolute right-0 z-30 mt-2 w-72 rounded-2xl border border-white/10 bg-slate-900/95 p-4 shadow-2xl backdrop-blur-xl">
+                <div className="absolute right-0 z-50 mt-2 w-72 rounded-2xl border border-white/10 bg-slate-900/95 p-4 shadow-2xl backdrop-blur-xl">
                   <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">
                     Wallet & Strava
                   </p>
