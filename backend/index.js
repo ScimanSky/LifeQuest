@@ -1330,7 +1330,6 @@ app.get("/user/stats", async (req, res) => {
     const rank = computeRank(balanceWei);
     const activities = await loadWalletActivities(wallet);
     const challengeRows = await fetchChallengesForWallet(wallet);
-    const challengeRows = await fetchChallengesForWallet(wallet);
 
     const dbStore = loadDatabase();
     const db = getWalletDb(dbStore, wallet);
