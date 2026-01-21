@@ -374,11 +374,12 @@ export default function ArenaPage() {
 
       try {
         const { request } = await publicClient.simulateContract(baseRequest);
-        const estimatedGas = request.gas ?? 120000n;
-        return { ...request, gas: estimatedGas + estimatedGas / 5n };
+        const fallbackGas = BigInt(120000);
+        const estimatedGas = request.gas ?? fallbackGas;
+        return { ...request, gas: estimatedGas + estimatedGas / BigInt(5) };
       } catch (error) {
         console.error("Simulazione transfer fallita, uso gas fisso:", error);
-        return { ...baseRequest, gas: 120000n };
+        return { ...baseRequest, gas: BigInt(120000) };
       }
     },
     [address, publicClient]
