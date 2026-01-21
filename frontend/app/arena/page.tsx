@@ -281,6 +281,7 @@ export default function ArenaPage() {
   const [claimingChallengeId, setClaimingChallengeId] = useState<string | null>(null);
   const [claimStage, setClaimStage] = useState<"claiming" | null>(null);
   const [claimError, setClaimError] = useState<string | null>(null);
+  const [refreshingChallengeId, setRefreshingChallengeId] = useState<string | null>(null);
   const lastProgressSyncRef = useRef(0);
   const [arenaWarnings, setArenaWarnings] = useState<Record<string, string>>({});
   const { address, isConnected } = useAccount();
@@ -419,6 +420,16 @@ export default function ArenaPage() {
       console.error("Errore aggiornamento progressi:", error);
     }
   }, [address]);
+
+  const handleRefreshProgress = useCallback(
+    async (duel: ArenaDuel) => {
+      setRefreshingChallengeId(duel.id);
+      await updateChallengeProgress(duel);
+      await fetchChallenges();
+      setRefreshingChallengeId(null);
+    },
+    [fetchChallenges, updateChallengeProgress]
+  );
 
   useEffect(() => {
     if (!ARENA_POLLING_ENABLED) return;
@@ -896,6 +907,8 @@ export default function ArenaPage() {
                     : acceptStage === "updating" && isAccepting
                       ? "Entro in Arena..."
                       : "Accetta";
+                const canRefresh = duel.status === "matched";
+                const isRefreshing = refreshingChallengeId === duel.id;
                 const statusLabel =
                   duel.status === "resolved"
                     ? "Conclusa"
@@ -1075,20 +1088,36 @@ export default function ArenaPage() {
                     <span className="text-xs uppercase tracking-[0.3em] text-slate-400">
                       {statusText}
                     </span>
-                    {duel.status === "active" ? (
-                      <button
-                        type="button"
-                        onClick={() => handleAcceptChallenge(duel)}
-                        disabled={!canAccept || isAccepting}
-                        className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
-                          canAccept && !isAccepting
-                            ? "border border-red-400/50 bg-red-500/10 text-red-200 hover:border-red-300/70 hover:text-red-100"
-                            : "border border-slate-700/60 bg-slate-900/60 text-slate-500 cursor-not-allowed"
-                        }`}
-                      >
-                        {isConnected ? acceptLabel : "Connetti wallet"}
-                      </button>
-                    ) : null}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {canRefresh ? (
+                        <button
+                          type="button"
+                          onClick={() => handleRefreshProgress(duel)}
+                          disabled={isRefreshing}
+                          className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
+                            !isRefreshing
+                              ? "border border-cyan-400/50 bg-cyan-500/10 text-cyan-200 hover:border-cyan-300/70 hover:text-cyan-100"
+                              : "border border-slate-700/60 bg-slate-900/60 text-slate-500 cursor-not-allowed"
+                          }`}
+                        >
+                          {isRefreshing ? "Aggiorno..." : "Aggiorna progressi"}
+                        </button>
+                      ) : null}
+                      {duel.status === "active" ? (
+                        <button
+                          type="button"
+                          onClick={() => handleAcceptChallenge(duel)}
+                          disabled={!canAccept || isAccepting}
+                          className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
+                            canAccept && !isAccepting
+                              ? "border border-red-400/50 bg-red-500/10 text-red-200 hover:border-red-300/70 hover:text-red-100"
+                              : "border border-slate-700/60 bg-slate-900/60 text-slate-500 cursor-not-allowed"
+                          }`}
+                        >
+                          {isConnected ? acceptLabel : "Connetti wallet"}
+                        </button>
+                      ) : null}
+                    </div>
                     {duel.status === "resolved" || duel.status === "draw" ? (
                       <button
                         type="button"
