@@ -759,7 +759,7 @@ function HomeContent() {
               !previousIds.has(activity.id ?? `${activity.type}-${activity.date}`)
           );
           if (ironFound) {
-            toast.success("Sessione Iron Protocol rilevata! +30 LIFE guadagnati", {
+            toast.success("Sessione Iron Protocol rilevata! +10 LIFE guadagnati", {
               style: {
                 background: "#0f172a",
                 color: "#e2e8f0",
@@ -1615,8 +1615,8 @@ function HomeContent() {
                     <MissionCard
                       icon={<Activity className="h-8 w-8 text-purple-500" />}
                       title="Corsa"
-                      description="Run su Strava sopra 1 km."
-                      reward="50"
+                      description="Run su Strava sopra 5 km."
+                      reward="10"
                       hideReward={!isWalletConnected}
                       current={weeklyCounts.run}
                       target={WEEKLY_GOALS.run}
@@ -1636,8 +1636,8 @@ function HomeContent() {
                     <MissionCard
                       icon={<Droplet className="h-8 w-8 text-cyan-400" />}
                       title="Nuoto"
-                      description="Swim su Strava sopra 250 m."
-                      reward="40"
+                      description="Swim su Strava sopra 1 km."
+                      reward="20"
                       hideReward={!isWalletConnected}
                       current={weeklyCounts.swim}
                       target={WEEKLY_GOALS.swim}
@@ -1658,7 +1658,7 @@ function HomeContent() {
                       icon={<Dumbbell className="h-8 w-8 text-purple-400" />}
                       title="Iron Protocol"
                       description="Sessione palestra su Strava."
-                      reward="30"
+                      reward="10"
                       hideReward={!isWalletConnected}
                       current={weeklyCounts.iron}
                       target={WEEKLY_GOALS.iron}
@@ -1705,17 +1705,17 @@ function HomeContent() {
                   {[
                     {
                       title: "Corsa",
-                      reward: "+50 LIFE",
+                      reward: "+10 LIFE",
                       accent: "text-purple-400"
                     },
                     {
                       title: "Nuoto",
-                      reward: "+40 LIFE",
+                      reward: "+20 LIFE",
                       accent: "text-cyan-300"
                     },
                     {
                       title: "Iron Protocol",
-                      reward: "+30 LIFE",
+                      reward: "+10 LIFE",
                       accent: "text-fuchsia-300"
                     },
                     {

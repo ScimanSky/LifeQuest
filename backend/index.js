@@ -464,11 +464,11 @@ function getWeekBounds(reference) {
 }
 
 function isValidRun(activity) {
-  return activity.type === "Run" && Number(activity.distance) > 1000;
+  return activity.type === "Run" && Number(activity.distance) >= 5000;
 }
 
 function isValidSwim(activity) {
-  return activity.type === "Swim" && Number(activity.distance) > 250;
+  return activity.type === "Swim" && Number(activity.distance) >= 1000;
 }
 
 function isValidIron(activity) {
@@ -782,17 +782,23 @@ function evaluateActivities(activities, paidIds) {
     let mappedIcon;
 
     if (isValidRun(activity)) {
-      reward = 50;
+      reward = 10;
     }
 
     if (isValidSwim(activity)) {
-      reward = 40;
+      reward = 20;
     }
 
     if (isValidIron(activity)) {
-      reward = 30;
+      reward = 10;
       mappedType = "Iron Protocol";
       mappedIcon = "🏋️";
+    }
+
+    if (isValidMindfulness(activity)) {
+      reward = 10;
+      mappedType = "Mindfulness";
+      mappedIcon = "🧘";
     }
 
     if (reward === 0) {

@@ -14,23 +14,23 @@ import {
 const earnCards = [
   {
     title: "Corsa (Run)",
-    rate: "5 LIFE / km",
-    description: "Esempio: 10 km = 50 LIFE. Premia la resistenza.",
+    rate: "10 LIFE / sessione",
+    description: "Minimo 5 km per validare la ricompensa.",
     icon: "🏃",
     accent: "from-purple-500/20 to-cyan-500/20",
     ring: "ring-purple-400/40"
   },
   {
     title: "Nuoto (Swim)",
-    rate: "20 LIFE / km",
-    description: "Il nuoto e piu faticoso, quindi paga di piu.",
+    rate: "20 LIFE / sessione",
+    description: "Minimo 1 km per validare la ricompensa.",
     icon: "🏊",
     accent: "from-cyan-500/20 to-emerald-500/20",
     ring: "ring-cyan-400/40"
   },
   {
     title: "Workout & Yoga",
-    rate: "30 LIFE / sessione",
+    rate: "10 LIFE / sessione",
     description: "Include Iron Protocol, CrossFit e Mindfulness.",
     icon: "🏋️",
     accent: "from-fuchsia-500/20 to-purple-500/20",
