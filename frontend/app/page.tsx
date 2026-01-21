@@ -1418,7 +1418,52 @@ function HomeContent() {
             </p>
             <span className="hidden text-[11px] text-slate-400 sm:inline">Bacheca</span>
           </div>
-          <div className="mt-2 flex gap-2 overflow-x-auto pb-2 snap-x snap-mandatory sm:gap-3">
+          <div className="mt-2 sm:hidden">
+            <div className="no-scrollbar flex gap-2 overflow-x-auto pb-2 snap-x snap-mandatory">
+              {trophyBadges.map((badge) => {
+                const unlocked = Boolean(
+                  resolvedBadgeUnlocks[badge.id as keyof typeof resolvedBadgeUnlocks]
+                );
+                return (
+                  <div
+                    key={badge.id}
+                    className={`group relative min-w-[150px] snap-start overflow-hidden rounded-2xl border border-white/10 bg-slate-900/60 p-2 text-center transition-all duration-500 ${
+                      unlocked
+                        ? "hover:-translate-y-0.5 hover:shadow-[0_0_28px_rgba(251,146,60,0.45)]"
+                        : "opacity-90"
+                    }`}
+                  >
+                    <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,transparent,rgba(56,189,248,0.08),transparent)] opacity-0 transition-opacity duration-700 group-hover:opacity-100" />
+                    {unlocked ? (
+                      <span className="pointer-events-none absolute inset-0 lifequest-trophy-shine" />
+                    ) : null}
+                    {unlocked ? (
+                      <span className="pointer-events-none absolute -top-8 -right-8 h-20 w-20 rounded-full bg-amber-400/20 blur-2xl" />
+                    ) : null}
+                    <div className="mx-auto flex aspect-square w-full items-center justify-center rounded-2xl bg-slate-950/70 ring-1 ring-white/5 p-2">
+                      <img
+                        src={badge.image}
+                        alt={badge.name}
+                        className={`h-full w-full object-contain ${
+                          unlocked
+                            ? `opacity-100 ${badge.glow} group-hover:shadow-[0_0_18px_rgba(251,146,60,0.6)]`
+                            : "opacity-40 grayscale"
+                        }`}
+                        loading="lazy"
+                      />
+                    </div>
+                    <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-xl border border-white/10 bg-slate-950/90 px-2 py-1 text-center text-[10px] text-slate-200 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                      <p className="font-semibold">{badge.name}</p>
+                      <p className="mt-0.5 text-[9px] text-slate-400">
+                        {unlocked ? "Sbloccato" : badge.requirement}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div className="mt-2 hidden sm:grid sm:grid-cols-2 sm:gap-3 lg:grid-cols-4">
             {trophyBadges.map((badge) => {
               const unlocked = Boolean(
                 resolvedBadgeUnlocks[badge.id as keyof typeof resolvedBadgeUnlocks]
@@ -1426,7 +1471,7 @@ function HomeContent() {
               return (
                 <div
                   key={badge.id}
-                  className={`group relative min-w-[140px] snap-start overflow-hidden rounded-2xl border border-white/10 bg-slate-900/60 p-2 text-center transition-all duration-500 sm:min-w-[160px] sm:p-2.5 ${
+                  className={`group relative overflow-hidden rounded-2xl border border-white/10 bg-slate-900/60 p-2 text-center transition-all duration-500 ${
                     unlocked
                       ? "hover:-translate-y-0.5 hover:shadow-[0_0_28px_rgba(251,146,60,0.45)]"
                       : "opacity-90"
@@ -1976,6 +2021,13 @@ function HomeContent() {
               transparent 70%
             );
             animation: lifequestShine 6s ease-in-out infinite;
+          }
+          .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+          }
+          .no-scrollbar::-webkit-scrollbar {
+            display: none;
           }
         `}</style>
       </div>
