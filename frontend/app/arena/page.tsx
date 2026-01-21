@@ -11,8 +11,17 @@ import {
   X
 } from "lucide-react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount, usePublicClient, useReadContract, useWriteContract } from "wagmi";
+import {
+  useAccount,
+  useBalance,
+  useChainId,
+  usePublicClient,
+  useReadContract,
+  useSwitchChain,
+  useWriteContract
+} from "wagmi";
 import { formatEther, parseAbi, parseEther, type Address } from "viem";
+import { polygonAmoy } from "viem/chains";
 import { supabase } from "../../utils/supabase";
 
 const CHALLENGE_DURATION_DAYS = 7;
@@ -21,6 +30,8 @@ const ARENA_POLL_INTERVAL_MS = 60000;
 const ARENA_POLLING_ENABLED = false;
 const ARENA_ARCHIVE_AFTER_DAYS = 1;
 const BACKEND_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
+const EXPECTED_CHAIN_ID = polygonAmoy.id;
+const MIN_GAS_WEI = parseEther("0.005");
 
 const LIFE_TOKEN_ADDRESS = (process.env.NEXT_PUBLIC_LIFE_TOKEN_ADDRESS ??
   process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ??
@@ -281,6 +292,9 @@ function getTxErrorMessage(error: unknown) {
   if (normalized.includes("execution reverted")) {
     return "Transazione rifiutata dal contratto. Controlla saldo LIFE o rete.";
   }
+  if (normalized.includes("internal json-rpc error")) {
+    return "Errore RPC. Controlla rete Amoy e saldo MATIC.";
+  }
 
   return "Errore transazione. Riprova tra poco.";
 }
@@ -313,8 +327,16 @@ export default function ArenaPage() {
     trigger: triggerClaimConfetti
   } = useClaimConfetti();
   const { address, isConnected } = useAccount();
+  const chainId = useChainId();
+  const { switchChainAsync } = useSwitchChain();
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
+  const { data: nativeBalance } = useBalance({
+    address,
+    query: {
+      enabled: Boolean(address)
+    }
+  });
   const { data: lifeBalance, refetch: refetchLifeBalance } = useReadContract({
     address: LIFE_TOKEN_ADDRESS,
     abi: LIFE_TOKEN_ABI,
@@ -647,6 +669,19 @@ export default function ArenaPage() {
     // 1. Controlli preliminari
     if (!isChallengeValid || !address || !publicClient) return;
     setSaveError(null);
+    if (chainId && chainId !== EXPECTED_CHAIN_ID) {
+      setSaveError("Rete non corretta. Passa a Polygon Amoy.");
+      try {
+        await switchChainAsync({ chainId: EXPECTED_CHAIN_ID });
+      } catch (error) {
+        console.error("Errore switch network:", error);
+      }
+      return;
+    }
+    if (nativeBalance && nativeBalance.value < MIN_GAS_WEI) {
+      setSaveError("MATIC insufficiente per il gas.");
+      return;
+    }
 
     // 2. Pulizia dati (Risolve errore 400 Supabase)
     const goalValue = parseNumericInput(challengeGoal);
@@ -722,12 +757,15 @@ export default function ArenaPage() {
     }
   }, [
     address,
+    chainId,
     challengeGoal,
     challengeDuration,
     challengeStake,
     challengeType,
     isChallengeValid,
+    nativeBalance,
     publicClient,
+    switchChainAsync,
     writeContractAsync
     // Rimosso refetchAllowance e allowanceValue perche non servono piu
   ]);
@@ -737,6 +775,19 @@ export default function ArenaPage() {
       if (!address || !publicClient) return;
       if (duel.status !== "active") return;
       if (duel.creatorAddress?.toLowerCase() === address.toLowerCase()) return;
+      if (chainId && chainId !== EXPECTED_CHAIN_ID) {
+        setAcceptError("Rete non corretta. Passa a Polygon Amoy.");
+        try {
+          await switchChainAsync({ chainId: EXPECTED_CHAIN_ID });
+        } catch (error) {
+          console.error("Errore switch network:", error);
+        }
+        return;
+      }
+      if (nativeBalance && nativeBalance.value < MIN_GAS_WEI) {
+        setAcceptError("MATIC insufficiente per il gas.");
+        return;
+      }
 
       const stakeValue = duel.stakeValue;
       if (!Number.isFinite(stakeValue) || stakeValue <= 0) {
@@ -796,7 +847,7 @@ export default function ArenaPage() {
         setAcceptingChallengeId(null);
       }
     },
-    [address, fetchChallenges, publicClient, writeContractAsync]
+    [address, chainId, fetchChallenges, nativeBalance, publicClient, switchChainAsync, writeContractAsync]
   );
 
   const handleClaimChallenge = useCallback(
