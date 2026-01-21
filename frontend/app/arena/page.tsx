@@ -292,6 +292,9 @@ function getTxErrorMessage(error: unknown) {
   if (normalized.includes("execution reverted")) {
     return "Transazione rifiutata dal contratto. Controlla saldo LIFE o rete.";
   }
+  if (normalized.includes("transfer amount exceeds balance")) {
+    return "Saldo LIFE insufficiente.";
+  }
   if (normalized.includes("internal json-rpc error")) {
     return "Errore RPC. Controlla rete Amoy e saldo MATIC.";
   }
@@ -703,6 +706,10 @@ export default function ArenaPage() {
 
     // Conversione per Blockchain
     const stakeWei = parseEther(stakeValue.toString());
+    if (lifeBalance !== undefined && lifeBalance < stakeWei) {
+      setSaveError("Saldo LIFE insufficiente.");
+      return;
+    }
 
     try {
       // 3. Trasferimento Blockchain (Semplificato: niente approve)
@@ -711,12 +718,14 @@ export default function ArenaPage() {
       // NOTA: per scalare il saldo inviamo al burn address.
       const destinationAddress = BURN_ADDRESS;
 
-      const transferHash = await writeContractAsync({
+      const { request } = await publicClient.simulateContract({
         address: LIFE_TOKEN_ADDRESS,
         abi: LIFE_TOKEN_ABI,
         functionName: "transfer",
-        args: [destinationAddress, stakeWei] // Invio diretto, niente allowance necessaria
+        args: [destinationAddress, stakeWei],
+        account: address
       });
+      const transferHash = await writeContractAsync(request);
 
       await publicClient.waitForTransactionReceipt({ hash: transferHash });
       setIsTransferring(false);
@@ -763,6 +772,7 @@ export default function ArenaPage() {
     challengeStake,
     challengeType,
     isChallengeValid,
+    lifeBalance,
     nativeBalance,
     publicClient,
     switchChainAsync,
@@ -794,19 +804,25 @@ export default function ArenaPage() {
         setAcceptError("Stake non valido.");
         return;
       }
+      const stakeWei = parseEther(stakeValue.toString());
+      if (lifeBalance !== undefined && lifeBalance < stakeWei) {
+        setAcceptError("Saldo LIFE insufficiente.");
+        return;
+      }
 
       setAcceptError(null);
       setAcceptingChallengeId(duel.id);
 
       try {
-        const stakeWei = parseEther(stakeValue.toString());
         setAcceptStage("transferring");
-        const transferHash = await writeContractAsync({
+        const { request } = await publicClient.simulateContract({
           address: LIFE_TOKEN_ADDRESS,
           abi: LIFE_TOKEN_ABI,
           functionName: "transfer",
-          args: [BURN_ADDRESS, stakeWei]
+          args: [BURN_ADDRESS, stakeWei],
+          account: address
         });
+        const transferHash = await writeContractAsync(request);
         await publicClient.waitForTransactionReceipt({ hash: transferHash });
 
         setAcceptStage("updating");
@@ -847,7 +863,16 @@ export default function ArenaPage() {
         setAcceptingChallengeId(null);
       }
     },
-    [address, chainId, fetchChallenges, nativeBalance, publicClient, switchChainAsync, writeContractAsync]
+    [
+      address,
+      chainId,
+      fetchChallenges,
+      lifeBalance,
+      nativeBalance,
+      publicClient,
+      switchChainAsync,
+      writeContractAsync
+    ]
   );
 
   const handleClaimChallenge = useCallback(
