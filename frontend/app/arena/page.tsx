@@ -706,8 +706,18 @@ export default function ArenaPage() {
 
     // Conversione per Blockchain
     const stakeWei = parseEther(stakeValue.toString());
-    const latestBalance = await refetchLifeBalance();
-    if (latestBalance.data !== undefined && latestBalance.data < stakeWei) {
+    const rpcChainId = await publicClient.getChainId();
+    if (rpcChainId !== EXPECTED_CHAIN_ID) {
+      setSaveError("RPC non su Amoy. Cambia RPC e riprova.");
+      return;
+    }
+    const onchainBalance = await publicClient.readContract({
+      address: LIFE_TOKEN_ADDRESS,
+      abi: LIFE_TOKEN_ABI,
+      functionName: "balanceOf",
+      args: [address]
+    });
+    if (onchainBalance < stakeWei) {
       setSaveError("Saldo LIFE insufficiente.");
       return;
     }
@@ -775,7 +785,6 @@ export default function ArenaPage() {
     isChallengeValid,
     nativeBalance,
     publicClient,
-    refetchLifeBalance,
     switchChainAsync,
     writeContractAsync
     // Rimosso refetchAllowance e allowanceValue perche non servono piu
@@ -806,8 +815,18 @@ export default function ArenaPage() {
         return;
       }
       const stakeWei = parseEther(stakeValue.toString());
-      const latestBalance = await refetchLifeBalance();
-      if (latestBalance.data !== undefined && latestBalance.data < stakeWei) {
+      const rpcChainId = await publicClient.getChainId();
+      if (rpcChainId !== EXPECTED_CHAIN_ID) {
+        setAcceptError("RPC non su Amoy. Cambia RPC e riprova.");
+        return;
+      }
+      const onchainBalance = await publicClient.readContract({
+        address: LIFE_TOKEN_ADDRESS,
+        abi: LIFE_TOKEN_ABI,
+        functionName: "balanceOf",
+        args: [address]
+      });
+      if (onchainBalance < stakeWei) {
         setAcceptError("Saldo LIFE insufficiente.");
         return;
       }
