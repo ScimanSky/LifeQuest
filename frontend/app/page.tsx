@@ -237,7 +237,7 @@ function HomeContent() {
     "run" | "swim" | "iron" | "mindfulness" | null
   >(null);
   const [showAllActivities, setShowAllActivities] = useState(false);
-  const [isWalletCollapsed, setIsWalletCollapsed] = useState(false);
+  const [isWalletMenuOpen, setIsWalletMenuOpen] = useState(false);
   const [currentLevel, setCurrentLevel] = useState(1);
   const [showLevelUpGlow, setShowLevelUpGlow] = useState(false);
   const [userStats, setUserStats] = useState<UserStats | null>(null);
@@ -989,12 +989,6 @@ function HomeContent() {
 
     return { runDistance, swimDistance, totalDistance };
   }, [activities, weekBounds]);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (window.innerWidth < 1024) {
-      setIsWalletCollapsed(true);
-    }
-  }, []);
 
   useEffect(() => {
     if (!isLevelUpSuccess) return;
@@ -1263,6 +1257,122 @@ function HomeContent() {
             >
               Guida LifeQuest
             </Link>
+            <div
+              className="relative"
+              onMouseEnter={() => setIsWalletMenuOpen(true)}
+              onMouseLeave={() => setIsWalletMenuOpen(false)}
+            >
+              <button
+                type="button"
+                onClick={() => setIsWalletMenuOpen((prev) => !prev)}
+                className="inline-flex items-center rounded-full border border-white/10 bg-slate-900/60 px-4 py-2 text-xs font-semibold text-slate-100 transition hover:border-white/20"
+              >
+                Wallet
+              </button>
+              {isWalletMenuOpen ? (
+                <div className="absolute right-0 z-30 mt-2 w-72 rounded-2xl border border-white/10 bg-slate-900/95 p-4 shadow-2xl backdrop-blur-xl">
+                  <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">
+                    Wallet & Strava
+                  </p>
+                  <div className="mt-3 flex flex-col gap-3">
+                    <ConnectButton.Custom>
+                      {({
+                        account,
+                        chain,
+                        mounted,
+                        openAccountModal,
+                        openChainModal,
+                        openConnectModal
+                      }) => {
+                        const ready = mounted;
+                        const connected = ready && account && chain;
+                        return (
+                          <div
+                            aria-hidden={!ready}
+                            style={
+                              !ready
+                                ? {
+                                    opacity: 0,
+                                    pointerEvents: "none",
+                                    userSelect: "none"
+                                  }
+                                : undefined
+                            }
+                          >
+                            {!connected ? (
+                              <button
+                                type="button"
+                                onClick={openConnectModal}
+                                className="inline-flex w-full items-center justify-center rounded-xl border border-cyan-400/40 px-4 py-3 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/70 hover:text-cyan-50"
+                              >
+                                Connetti Wallet
+                              </button>
+                            ) : chain?.unsupported ? (
+                              <button
+                                type="button"
+                                onClick={openChainModal}
+                                className="inline-flex w-full items-center justify-center rounded-xl border border-amber-400/60 px-4 py-3 text-sm font-semibold text-amber-100 transition hover:border-amber-300/80 hover:text-amber-50"
+                              >
+                                Wrong Network
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={openAccountModal}
+                                className="inline-flex w-full items-center justify-center rounded-xl border border-white/10 bg-slate-900/60 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:border-white/20"
+                              >
+                                {account?.displayName}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      }}
+                    </ConnectButton.Custom>
+                    {isWalletConnected ? (
+                      <button
+                        type="button"
+                        onClick={handleSync}
+                        disabled={isSyncing}
+                        className={`flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                          showStravaSync
+                            ? "bg-purple-500 text-white shadow-[0_0_18px_rgba(168,85,247,0.6)] hover:bg-purple-400"
+                            : "bg-cyan-400 text-slate-900 shadow-[0_0_18px_rgba(34,211,238,0.45)] hover:bg-cyan-300"
+                        }`}
+                      >
+                        {isSyncing ? (
+                          <>
+                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                            Sincronizzazione...
+                          </>
+                        ) : (
+                          <>↻ {showStravaSync ? "Sincronizza Strava" : "Aggiorna Strava"}</>
+                        )}
+                      </button>
+                    ) : (
+                      <p className="text-xs text-slate-300">
+                        Connetti il wallet per sincronizzare Strava.
+                      </p>
+                    )}
+                    {isWalletConnected ? (
+                      <button
+                        type="button"
+                        onClick={handleAdminMint}
+                        disabled={isMinting}
+                        className="self-end rounded-full border border-slate-700/70 bg-slate-950/60 px-3 py-1 text-[11px] font-semibold text-slate-300 transition hover:border-slate-500/70 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        ⚙️ {adminMintLabel}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-[11px] font-semibold text-cyan-100">
+              <span className="uppercase tracking-[0.2em] text-[10px] text-cyan-200 hidden sm:inline">
+                Saldo
+              </span>
+              <span className="font-mono">{lifeBalanceFormatted} LIFE</span>
+            </div>
           </div>
         </header>
 
@@ -1337,133 +1447,6 @@ function HomeContent() {
                 label={isWalletConnected ? "Connesso" : "Disconnesso"}
                 tone={isWalletConnected ? "success" : "warning"}
               />
-            </div>
-
-            <div
-              className={`w-full rounded-3xl border border-white/10 bg-slate-900/40 p-5 shadow-2xl backdrop-blur-xl transition-all duration-500 ${
-                isDisconnected ? "grayscale-[0.6] saturate-50 opacity-80" : ""
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-300">Wallet</p>
-                <button
-                  type="button"
-                  onClick={() => setIsWalletCollapsed((prev) => !prev)}
-                  className="text-[11px] font-semibold text-slate-300 transition hover:text-white"
-                >
-                  {isWalletCollapsed ? "Mostra dettagli" : "Riduci"}
-                </button>
-              </div>
-              <div className="mt-4 flex flex-col gap-4">
-                <ConnectButton.Custom>
-                  {({
-                    account,
-                    chain,
-                    mounted,
-                    openAccountModal,
-                    openChainModal,
-                    openConnectModal
-                  }) => {
-                    const ready = mounted;
-                    const connected = ready && account && chain;
-
-                    return (
-                      <div
-                        aria-hidden={!ready}
-                        style={
-                          !ready
-                            ? {
-                                opacity: 0,
-                                pointerEvents: "none",
-                                userSelect: "none"
-                              }
-                            : undefined
-                        }
-                      >
-                        {!connected ? (
-                          <button
-                            type="button"
-                            onClick={openConnectModal}
-                            className="inline-flex w-full items-center justify-center rounded-xl border border-cyan-400/40 px-4 py-3 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/70 hover:text-cyan-50"
-                          >
-                            Connetti Wallet
-                          </button>
-                        ) : chain?.unsupported ? (
-                          <button
-                            type="button"
-                            onClick={openChainModal}
-                            className="inline-flex w-full items-center justify-center rounded-xl border border-amber-400/60 px-4 py-3 text-sm font-semibold text-amber-100 transition hover:border-amber-300/80 hover:text-amber-50"
-                          >
-                            Wrong Network
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={openAccountModal}
-                            className="inline-flex w-full items-center justify-center rounded-xl border border-white/10 bg-slate-900/60 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:border-white/20"
-                          >
-                            {account?.displayName}
-                          </button>
-                        )}
-                      </div>
-                    );
-                  }}
-                </ConnectButton.Custom>
-                {isWalletCollapsed ? (
-                  <div className="flex items-center justify-between rounded-xl border border-cyan-400/30 bg-slate-900/50 px-4 py-3 text-sm text-slate-200">
-                    <span className="text-xs uppercase tracking-[0.2em] text-cyan-300">
-                      Saldo LIFE
-                    </span>
-                    <span className="font-mono text-white">{lifeBalanceFormatted} LIFE</span>
-                  </div>
-                ) : (
-                  <div className="rounded-2xl border border-cyan-400/40 bg-slate-900/60 p-4 shadow-[0_0_24px_rgba(34,211,238,0.35)]">
-                    <p className="text-xs uppercase tracking-[0.3em] text-cyan-300">
-                      Saldo LIFE
-                    </p>
-                    <p className="mt-2 text-2xl font-semibold text-white font-mono">
-                      {lifeBalanceFormatted} LIFE
-                    </p>
-                  </div>
-                )}
-                {isWalletConnected ? (
-                  <button
-                    type="button"
-                    onClick={handleSync}
-                    disabled={isSyncing}
-                    className={`flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                      showStravaSync
-                        ? "bg-purple-500 text-white shadow-[0_0_18px_rgba(168,85,247,0.6)] hover:bg-purple-400"
-                        : "bg-cyan-400 text-slate-900 shadow-[0_0_18px_rgba(34,211,238,0.45)] hover:bg-cyan-300"
-                    }`}
-                  >
-                    {isSyncing ? (
-                      <>
-                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                        Sincronizzazione...
-                      </>
-                    ) : (
-                      <>
-                        ↻ {showStravaSync ? "Sincronizza Strava" : "Aggiorna Strava"}
-                      </>
-                    )}
-                  </button>
-                ) : (
-                  <p className="text-xs text-slate-300">
-                    Connetti il wallet per sincronizzare Strava.
-                  </p>
-                )}
-                {isWalletConnected ? (
-                  <button
-                    type="button"
-                    onClick={handleAdminMint}
-                    disabled={isMinting}
-                    className="self-end rounded-full border border-slate-700/70 bg-slate-950/60 px-3 py-1 text-[11px] font-semibold text-slate-300 transition hover:border-slate-500/70 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    ⚙️ {adminMintLabel}
-                  </button>
-                ) : null}
-              </div>
             </div>
 
             {isWalletConnected ? (
