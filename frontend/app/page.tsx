@@ -20,6 +20,7 @@ import {
   Dumbbell,
   Leaf,
   Zap,
+  Coins,
   Wallet,
   Lock,
   CheckCircle,
@@ -1837,6 +1838,21 @@ function HomeContent() {
                         )
                       }
                     />
+                    <MissionCard
+                      icon={<Coins className="h-6 w-6 sm:h-8 sm:w-8" />}
+                      accent="text-amber-300"
+                      title="Investitore"
+                      description="Scommetti 500 LIFE totali in Arena."
+                      reward="50"
+                      rewardUnit="XP"
+                      hideReward={!isWalletConnected}
+                      current={150}
+                      target={500}
+                      status="150/500 LIFE scommessi"
+                      isComplete={false}
+                      isActive={false}
+                      className="w-full sm:col-span-2"
+                    />
                   </div>
                 </>
               ) : (
@@ -2113,6 +2129,7 @@ function MissionCard({
   title,
   description,
   reward,
+  rewardUnit = "LIFE",
   hideReward,
   status,
   current,
@@ -2127,6 +2144,7 @@ function MissionCard({
   title: string;
   description: string;
   reward: string;
+  rewardUnit?: string;
   hideReward: boolean;
   status?: string;
   current?: number;
@@ -2203,7 +2221,7 @@ function MissionCard({
             </span>
           ) : (
             <span className="mt-1 block text-xs font-bold text-purple-300 font-mono sm:text-sm">
-              +{reward} LIFE
+              +{reward} {rewardUnit}
             </span>
           )}
         </div>
