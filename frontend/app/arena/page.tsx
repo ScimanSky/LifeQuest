@@ -1138,7 +1138,7 @@ export default function ArenaPage() {
                     : acceptStage === "updating" && isAccepting
                       ? "Entro in Arena..."
                       : "Accetta";
-                const canRefresh = duel.status === "matched";
+                const canRefresh = isConnected && duel.status === "matched";
                 const isRefreshing = refreshingChallengeId === duel.id;
                 const statusLabel =
                   duel.status === "resolved"
@@ -1316,7 +1316,7 @@ export default function ArenaPage() {
                           {isRefreshing ? "Aggiorno..." : "Aggiorna progressi"}
                         </button>
                       ) : null}
-                      {duel.status === "active" ? (
+                      {duel.status === "active" && isConnected ? (
                         <button
                           type="button"
                           onClick={() => handleAcceptChallenge(duel)}
@@ -1327,7 +1327,7 @@ export default function ArenaPage() {
                               : "border border-slate-700/60 bg-slate-900/60 text-slate-500 cursor-not-allowed"
                           }`}
                         >
-                          {isConnected ? acceptLabel : "Connetti wallet"}
+                          {acceptLabel}
                         </button>
                       ) : null}
                     </div>
@@ -1364,16 +1364,18 @@ export default function ArenaPage() {
         </section>
       </div>
 
-      <button
-        type="button"
-        onClick={() => {
-          setSaveError(null);
-          setIsModalOpen(true);
-        }}
-        className="fixed bottom-6 right-6 z-20 flex items-center gap-2 rounded-full bg-gradient-to-r from-red-500 to-fuchsia-500 px-6 py-3 text-sm font-semibold text-white shadow-[0_0_25px_rgba(239,68,68,0.5)] transition hover:scale-105"
-      >
-        ⚔️ Nuova Sfida
-      </button>
+      {isConnected ? (
+        <button
+          type="button"
+          onClick={() => {
+            setSaveError(null);
+            setIsModalOpen(true);
+          }}
+          className="fixed bottom-6 right-6 z-20 flex items-center gap-2 rounded-full bg-gradient-to-r from-red-500 to-fuchsia-500 px-6 py-3 text-sm font-semibold text-white shadow-[0_0_25px_rgba(239,68,68,0.5)] transition hover:scale-105"
+        >
+          ⚔️ Nuova Sfida
+        </button>
+      ) : null}
 
       {isModalOpen ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/80 p-6">
