@@ -1985,11 +1985,6 @@ function MissionCard({
         <span className="pointer-events-none absolute inset-0 rounded-2xl bg-cyan-400/5 animate-pulse" />
       ) : null}
       <span className="pointer-events-none absolute -top-8 right-6 h-20 w-20 rounded-full bg-cyan-500/10 blur-2xl opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
-      {isCompleted ? (
-        <span className="absolute left-3 top-3 rounded-full border border-cyan-400/60 bg-cyan-500/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-cyan-200">
-          Checked
-        </span>
-      ) : null}
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-3">
           <div className="mt-1 transform group-hover:scale-105 transition-transform">{icon}</div>
