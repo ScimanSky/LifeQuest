@@ -1266,7 +1266,7 @@ function HomeContent() {
               <h1 className="text-2xl font-bold tracking-tight text-white">Dashboard</h1>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex w-full flex-wrap items-center justify-end gap-3 sm:w-auto">
             <Link
               href="/arena"
               className="inline-flex items-center rounded-full border border-red-400/40 bg-red-500/10 px-4 py-2 text-xs font-semibold text-red-200 transition hover:border-red-300/70 hover:text-red-100"
