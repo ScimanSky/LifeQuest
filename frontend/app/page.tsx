@@ -1571,7 +1571,7 @@ function HomeContent() {
             {isWalletConnected ? (
               <>
                 <div
-                  className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-4 transition-all duration-500 flex flex-col flex-1 h-full lg:h-[520px] ${
+                  className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-4 transition-all duration-500 flex flex-col flex-1 h-full ${
                     showLevelUpGlow
                       ? "ring-2 ring-amber-400/60 shadow-[0_0_30px_rgba(251,191,36,0.4)]"
                       : ""
@@ -1695,7 +1695,7 @@ function HomeContent() {
 
           <section className="col-span-12 lg:col-span-5 flex flex-col gap-3 lg:min-h-0 lg:h-full">
             <div
-              className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-3 sm:p-4 lg:p-3 flex flex-col min-h-0 transition-all duration-500 lg:h-[520px] ${
+              className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-3 sm:p-4 lg:p-3 flex flex-col min-h-0 transition-all duration-500 ${
                 isDisconnected ? "grayscale-[0.3] saturate-75" : ""
               }`}
             >
@@ -1883,7 +1883,7 @@ function HomeContent() {
 
           <section className="col-span-12 lg:col-span-4 flex flex-col gap-3 lg:min-h-0 lg:h-full">
             <div
-              className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-4 flex flex-col flex-1 h-full lg:h-[520px] transition-all duration-500 lg:overflow-hidden ${
+              className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-4 flex flex-col flex-1 h-full transition-all duration-500 lg:overflow-hidden ${
                 isDisconnected ? "grayscale-[0.3] saturate-75" : ""
               } ${isActivitiesExpanded ? "" : "lg:h-full"}`}
             >
