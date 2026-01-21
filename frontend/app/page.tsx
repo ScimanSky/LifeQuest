@@ -947,7 +947,6 @@ function HomeContent() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (!window.matchMedia("(max-width: 639px)").matches) return;
     const container = trophyCarouselRef.current;
     if (!container) return;
     const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -1486,55 +1485,10 @@ function HomeContent() {
             </p>
             <span className="hidden text-[11px] text-slate-400 sm:inline">Bacheca</span>
           </div>
-          <div className="mt-2 sm:hidden">
-            <div
-              ref={trophyCarouselRef}
-              className="no-scrollbar flex gap-2 overflow-x-auto pb-2 snap-x snap-mandatory"
-            >
-              {trophyBadges.map((badge) => {
-                const unlocked = Boolean(
-                  resolvedBadgeUnlocks[badge.id as keyof typeof resolvedBadgeUnlocks]
-                );
-                return (
-                  <div
-                    key={badge.id}
-                    className={`group relative min-w-[150px] snap-start overflow-hidden rounded-2xl border border-white/10 bg-slate-900/60 p-2 text-center transition-all duration-500 ${
-                      unlocked
-                        ? "hover:-translate-y-0.5 hover:shadow-[0_0_28px_rgba(251,146,60,0.45)]"
-                        : "opacity-90"
-                    }`}
-                  >
-                    <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,transparent,rgba(56,189,248,0.08),transparent)] opacity-0 transition-opacity duration-700 group-hover:opacity-100" />
-                    {unlocked ? (
-                      <span className="pointer-events-none absolute inset-0 lifequest-trophy-shine" />
-                    ) : null}
-                    {unlocked ? (
-                      <span className="pointer-events-none absolute -top-8 -right-8 h-20 w-20 rounded-full bg-amber-400/20 blur-2xl" />
-                    ) : null}
-                  <div className="mx-auto flex aspect-square w-24 items-center justify-center overflow-hidden rounded-2xl bg-slate-950/70 ring-1 ring-white/5 p-0 sm:w-28">
-                    <img
-                      src={badge.image}
-                      alt={badge.name}
-                      className={`h-full w-full object-contain scale-[1.5] ${
-                        unlocked
-                          ? `opacity-100 ${badge.glow} group-hover:shadow-[0_0_18px_rgba(251,146,60,0.6)]`
-                          : "opacity-40 grayscale"
-                      }`}
-                      loading="lazy"
-                      />
-                    </div>
-                    <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-xl border border-white/10 bg-slate-950/90 px-2 py-1 text-center text-[10px] text-slate-200 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                      <p className="font-semibold">{badge.name}</p>
-                      <p className="mt-0.5 text-[9px] text-slate-400">
-                        {unlocked ? "Sbloccato" : badge.requirement}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          <div className="mt-2 hidden sm:grid sm:grid-cols-2 sm:gap-3 lg:grid-cols-4">
+          <div
+            ref={trophyCarouselRef}
+            className="no-scrollbar mt-2 flex flex-nowrap gap-2 overflow-x-auto pb-2 snap-x snap-mandatory sm:gap-3"
+          >
             {trophyBadges.map((badge) => {
               const unlocked = Boolean(
                 resolvedBadgeUnlocks[badge.id as keyof typeof resolvedBadgeUnlocks]
@@ -1542,7 +1496,7 @@ function HomeContent() {
               return (
                 <div
                   key={badge.id}
-                  className={`group relative overflow-hidden rounded-2xl border border-white/10 bg-slate-900/60 p-2 text-center transition-all duration-500 ${
+                  className={`group relative min-w-[150px] snap-start overflow-hidden rounded-2xl border border-white/10 bg-slate-900/60 p-2 text-center transition-all duration-500 sm:min-w-[160px] ${
                     unlocked
                       ? "hover:-translate-y-0.5 hover:shadow-[0_0_28px_rgba(251,146,60,0.45)]"
                       : "opacity-90"
@@ -1580,7 +1534,7 @@ function HomeContent() {
         </div>
 
         <section className="flex flex-col gap-3 lg:flex-1 lg:min-h-0 lg:flex-row lg:items-stretch">
-          <aside className="flex flex-col gap-3 lg:min-h-0 lg:h-full lg:flex-[3] lg:min-w-0">
+          <aside className="flex flex-col gap-3 lg:min-h-0 lg:h-full lg:flex-[3] lg:min-w-0 lg:self-stretch">
             {isWalletConnected ? (
               <>
                 <div
@@ -1710,7 +1664,7 @@ function HomeContent() {
             )}
           </aside>
 
-          <section className="flex flex-col gap-3 lg:min-h-0 lg:h-full lg:flex-[5] lg:min-w-0">
+          <section className="flex flex-col gap-3 lg:min-h-0 lg:h-full lg:flex-[5] lg:min-w-0 lg:self-stretch">
             <div
               className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-3 sm:p-4 lg:p-3 flex flex-col flex-1 min-h-0 transition-all duration-500 h-full ${
                 isDisconnected ? "grayscale-[0.3] saturate-75" : ""
@@ -1915,7 +1869,7 @@ function HomeContent() {
             </div>
           </section>
 
-          <section className="flex flex-col gap-3 lg:min-h-0 lg:h-full lg:flex-[4] lg:min-w-0">
+          <section className="flex flex-col gap-3 lg:min-h-0 lg:h-full lg:flex-[4] lg:min-w-0 lg:self-stretch">
             <div
               className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-4 flex flex-col flex-1 h-full transition-all duration-500 lg:overflow-hidden ${
                 isDisconnected ? "grayscale-[0.3] saturate-75" : ""
