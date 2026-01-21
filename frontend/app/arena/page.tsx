@@ -359,7 +359,7 @@ export default function ArenaPage() {
     return Number.isFinite(parsed) ? parsed : null;
   }, [address, lifeBalance]);
 
-  const buildTransferRequest = useCallback(
+  const estimateTransferGas = useCallback(
     async (amount: bigint) => {
       if (!address || !publicClient) {
         throw new Error("Wallet non disponibile.");
@@ -376,10 +376,10 @@ export default function ArenaPage() {
         const { request } = await publicClient.simulateContract(baseRequest);
         const fallbackGas = BigInt(120000);
         const estimatedGas = request.gas ?? fallbackGas;
-        return { ...request, gas: estimatedGas + estimatedGas / BigInt(5) };
+        return estimatedGas + estimatedGas / BigInt(5);
       } catch (error) {
         console.error("Simulazione transfer fallita, uso gas fisso:", error);
-        return { ...baseRequest, gas: BigInt(120000) };
+        return BigInt(120000);
       }
     },
     [address, publicClient]
@@ -755,8 +755,14 @@ export default function ArenaPage() {
       // NOTA: per scalare il saldo inviamo al burn address.
       const destinationAddress = BURN_ADDRESS;
 
-      const request = await buildTransferRequest(stakeWei);
-      const transferHash = await writeContractAsync(request);
+      const gas = await estimateTransferGas(stakeWei);
+      const transferHash = await writeContractAsync({
+        address: LIFE_TOKEN_ADDRESS,
+        abi: LIFE_TOKEN_ABI,
+        functionName: "transfer",
+        args: [destinationAddress, stakeWei],
+        gas
+      });
 
       await publicClient.waitForTransactionReceipt({ hash: transferHash });
       setIsTransferring(false);
@@ -803,7 +809,7 @@ export default function ArenaPage() {
     challengeStake,
     challengeType,
     isChallengeValid,
-    buildTransferRequest,
+    estimateTransferGas,
     nativeBalance,
     publicClient,
     switchChainAsync,
@@ -857,8 +863,14 @@ export default function ArenaPage() {
 
       try {
         setAcceptStage("transferring");
-        const request = await buildTransferRequest(stakeWei);
-        const transferHash = await writeContractAsync(request);
+        const gas = await estimateTransferGas(stakeWei);
+        const transferHash = await writeContractAsync({
+          address: LIFE_TOKEN_ADDRESS,
+          abi: LIFE_TOKEN_ABI,
+          functionName: "transfer",
+          args: [BURN_ADDRESS, stakeWei],
+          gas
+        });
         await publicClient.waitForTransactionReceipt({ hash: transferHash });
 
         setAcceptStage("updating");
@@ -901,7 +913,7 @@ export default function ArenaPage() {
     },
     [
       address,
-      buildTransferRequest,
+      estimateTransferGas,
       chainId,
       fetchChallenges,
       nativeBalance,
