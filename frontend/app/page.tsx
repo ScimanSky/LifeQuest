@@ -2184,7 +2184,9 @@ function MissionCard({
             <p className="mt-1 text-[11px] text-slate-400 sm:text-xs">{description}</p>
             {status ? (
               <span
-                className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[9px] font-semibold font-mono sm:text-[10px] ${statusTone}`}
+                className={`mt-1 inline-flex items-center justify-center rounded-full border px-2 py-0.5 text-[9px] font-semibold font-mono sm:text-[10px] text-center ${statusTone} ${
+                  isCompleted ? "self-center" : ""
+                }`}
               >
                 {status}
               </span>
