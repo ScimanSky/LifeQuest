@@ -445,7 +445,13 @@ function HomeContent() {
 
   const refreshStats = async () => {
     try {
-      const response = await fetch(USER_STATS_URL);
+      if (!walletAddress) {
+        setUserStats(null);
+        return;
+      }
+      const response = await fetch(
+        `${USER_STATS_URL}?wallet=${encodeURIComponent(walletAddress)}`
+      );
       if (!response.ok) {
         throw new Error("Impossibile caricare i dati utente.");
       }
@@ -461,7 +467,17 @@ function HomeContent() {
 
     const loadActivities = async () => {
       try {
-        const response = await fetch(ACTIVITIES_URL);
+        if (!walletAddress) {
+          if (isMounted) {
+            setActivities([]);
+            setLoadError(null);
+            setIsLoading(false);
+          }
+          return;
+        }
+        const response = await fetch(
+          `${ACTIVITIES_URL}?wallet=${encodeURIComponent(walletAddress)}`
+        );
         if (!response.ok) {
           throw new Error("Impossibile caricare lo storico attività.");
         }
@@ -484,7 +500,7 @@ function HomeContent() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [walletAddress]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -588,7 +604,14 @@ function HomeContent() {
   const refreshActivities = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(ACTIVITIES_URL);
+      if (!walletAddress) {
+        setActivities([]);
+        setLoadError(null);
+        return null;
+      }
+      const response = await fetch(
+        `${ACTIVITIES_URL}?wallet=${encodeURIComponent(walletAddress)}`
+      );
       if (!response.ok) {
         throw new Error("Impossibile caricare lo storico attività.");
       }

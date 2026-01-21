@@ -49,7 +49,6 @@ const CONTRACT_ABI = [
   "function mint(address to, uint256 amount)",
   "function balanceOf(address account) view returns (uint256)"
 ];
-const RECIPIENT_ADDRESS = "0x9ee32F0BE08F7A1B4E40e47A82a355a31aD5077C";
 const PAID_ACTIVITIES_PATH = path.join(__dirname, "paid_activities.json");
 const STRAVA_TOKEN_PATH = path.join(__dirname, "strava_tokens.json");
 const DATABASE_PATH = path.join(__dirname, "database.json");
@@ -60,42 +59,46 @@ function normalizeWallet(address) {
   return address.toLowerCase();
 }
 
-function loadPaidActivities() {
+function loadPaidActivitiesStore() {
   try {
     if (!fs.existsSync(PAID_ACTIVITIES_PATH)) {
-      fs.writeFileSync(PAID_ACTIVITIES_PATH, "[]");
-      return [];
+      const initial = { wallets: {} };
+      fs.writeFileSync(PAID_ACTIVITIES_PATH, JSON.stringify(initial, null, 2));
+      return initial;
     }
 
     const raw = fs.readFileSync(PAID_ACTIVITIES_PATH, "utf8");
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    if (Array.isArray(parsed)) {
+      return { wallets: { __legacy: parsed } };
+    }
+    if (!parsed || typeof parsed !== "object") {
+      return { wallets: {} };
+    }
+    const wallets =
+      parsed.wallets && typeof parsed.wallets === "object" ? parsed.wallets : {};
+    return { wallets };
   } catch (err) {
     console.error("Errore lettura paid_activities.json:", err);
-    return [];
+    return { wallets: {} };
   }
 }
 
-function savePaidActivities(activities) {
+function savePaidActivitiesStore(store) {
   try {
     fs.writeFileSync(
       PAID_ACTIVITIES_PATH,
-      JSON.stringify(activities, null, 2)
+      JSON.stringify(store, null, 2)
     );
   } catch (err) {
     console.error("Errore scrittura paid_activities.json:", err);
   }
 }
 
-let paidActivitiesStore = loadPaidActivities();
-const paidActivities = new Set(paidActivitiesStore.map((activity) => activity.id));
-
-function refreshPaidActivities() {
-  paidActivitiesStore = loadPaidActivities();
-  paidActivities.clear();
-  for (const activity of paidActivitiesStore) {
-    paidActivities.add(activity.id);
-  }
+function getWalletActivities(store, wallet) {
+  if (!store || !store.wallets) return [];
+  const list = store.wallets[wallet];
+  return Array.isArray(list) ? list : [];
 }
 
 function loadStravaTokens() {
@@ -142,22 +145,27 @@ function removeWalletTokens(tokensStore, wallet) {
   return true;
 }
 
+function createDefaultWalletDb() {
+  return {
+    unlockedBadges: [],
+    weeklyBonuses: [],
+    badges: {
+      sonicBurst: false,
+      hydroMaster: false,
+      ironProtocol: false,
+      zenFocus: false
+    },
+    stats: {
+      gymSessions: 0,
+      zenSessions: 0
+    }
+  };
+}
+
 function loadDatabase() {
   try {
     if (!fs.existsSync(DATABASE_PATH)) {
-      const initial = {
-        unlockedBadges: [],
-        badges: {
-          sonicBurst: false,
-          hydroMaster: false,
-          ironProtocol: false,
-          zenFocus: false
-        },
-        stats: {
-          gymSessions: 0,
-          zenSessions: 0
-        }
-      };
+      const initial = { wallets: {} };
       fs.writeFileSync(DATABASE_PATH, JSON.stringify(initial, null, 2));
       return initial;
     }
@@ -165,43 +173,15 @@ function loadDatabase() {
     const raw = fs.readFileSync(DATABASE_PATH, "utf8");
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") {
-      return { unlockedBadges: [] };
+      return { wallets: {} };
     }
-    if (!Array.isArray(parsed.unlockedBadges)) {
-      parsed.unlockedBadges = [];
+    if (!parsed.wallets || typeof parsed.wallets !== "object") {
+      return { wallets: { __legacy: parsed } };
     }
-    if (!Array.isArray(parsed.weeklyBonuses)) {
-      parsed.weeklyBonuses = [];
-    }
-    if (!parsed.badges || typeof parsed.badges !== "object") {
-      parsed.badges = {};
-    }
-    parsed.badges.sonicBurst = Boolean(parsed.badges.sonicBurst);
-    parsed.badges.hydroMaster = Boolean(parsed.badges.hydroMaster);
-    parsed.badges.ironProtocol = Boolean(parsed.badges.ironProtocol);
-    parsed.badges.zenFocus = Boolean(parsed.badges.zenFocus);
-    if (!parsed.stats || typeof parsed.stats !== "object") {
-      parsed.stats = {};
-    }
-    parsed.stats.gymSessions = Number(parsed.stats.gymSessions) || 0;
-    parsed.stats.zenSessions = Number(parsed.stats.zenSessions) || 0;
     return parsed;
   } catch (err) {
     console.error("Errore lettura database.json:", err);
-    return {
-      unlockedBadges: [],
-      weeklyBonuses: [],
-      badges: {
-        sonicBurst: false,
-        hydroMaster: false,
-        ironProtocol: false,
-        zenFocus: false
-      },
-      stats: {
-        gymSessions: 0,
-        zenSessions: 0
-      }
-    };
+    return { wallets: {} };
   }
 }
 
@@ -232,6 +212,34 @@ function computeRank(balanceWei) {
   return "LEGEND (Lv 21+)";
 }
 
+function getWalletDb(store, wallet) {
+  if (!store.wallets) {
+    store.wallets = {};
+  }
+  if (!store.wallets[wallet]) {
+    store.wallets[wallet] = createDefaultWalletDb();
+  }
+  const db = store.wallets[wallet];
+  if (!Array.isArray(db.unlockedBadges)) {
+    db.unlockedBadges = [];
+  }
+  if (!Array.isArray(db.weeklyBonuses)) {
+    db.weeklyBonuses = [];
+  }
+  if (!db.badges || typeof db.badges !== "object") {
+    db.badges = createDefaultWalletDb().badges;
+  }
+  db.badges.sonicBurst = Boolean(db.badges.sonicBurst);
+  db.badges.hydroMaster = Boolean(db.badges.hydroMaster);
+  db.badges.ironProtocol = Boolean(db.badges.ironProtocol);
+  db.badges.zenFocus = Boolean(db.badges.zenFocus);
+  if (!db.stats || typeof db.stats !== "object") {
+    db.stats = createDefaultWalletDb().stats;
+  }
+  db.stats.gymSessions = Number(db.stats.gymSessions) || 0;
+  db.stats.zenSessions = Number(db.stats.zenSessions) || 0;
+  return db;
+}
 function computeXpMissing(balanceWei) {
   const tokenUnit = ethers.parseUnits("1", 18);
   const balanceTokens = balanceWei / tokenUnit;
@@ -328,7 +336,6 @@ function checkPerfectWeekBonus(activities, db) {
       awardedAt: new Date().toISOString()
     });
     db.weeklyBonuses = bonuses;
-    saveDatabase(db);
   }
 
   return {
@@ -397,18 +404,17 @@ function checkBadgeUnlock(stats, db) {
   }
 
   db.badges = badges;
-  saveDatabase(db);
   return badges;
 }
 
-async function fetchBalance() {
+async function fetchBalance(address) {
   const provider = new ethers.JsonRpcProvider(process.env.POLYGON_RPC_URL);
   const contract = new ethers.Contract(
     process.env.CONTRACT_ADDRESS,
     CONTRACT_ABI,
     provider
   );
-  return contract.balanceOf(RECIPIENT_ADDRESS);
+  return contract.balanceOf(address);
 }
 
 async function fetchRecentActivities(accessToken) {
@@ -445,12 +451,12 @@ async function fetchRecentActivities(accessToken) {
   return activities;
 }
 
-function evaluateActivities(activities) {
+function evaluateActivities(activities, paidIds) {
   const pendingActivities = [];
   let totalReward = 0;
 
   for (const activity of activities) {
-    if (!activity || !activity.id || paidActivities.has(activity.id)) {
+    if (!activity || !activity.id || paidIds.has(activity.id)) {
       continue;
     }
 
@@ -493,7 +499,7 @@ function evaluateActivities(activities) {
   return { pendingActivities, totalReward };
 }
 
-async function mintReward(totalReward) {
+async function mintReward(totalReward, recipient) {
   const provider = new ethers.JsonRpcProvider(process.env.POLYGON_RPC_URL);
   const wallet = new ethers.Wallet(process.env.OWNER_PRIVATE_KEY, provider);
   const contract = new ethers.Contract(
@@ -503,7 +509,7 @@ async function mintReward(totalReward) {
   );
 
   const tx = await contract.mint(
-    RECIPIENT_ADDRESS,
+    recipient,
     ethers.parseUnits(totalReward.toString(), 18),
     { gasLimit: 200000n }
   );
@@ -547,22 +553,28 @@ app.post("/strava/disconnect", (req, res) => {
   return res.json({ status: removed ? "disconnected" : "not_connected" });
 });
 
-app.get("/activities", (_req, res) => {
-  paidActivitiesStore = loadPaidActivities();
-  paidActivities.clear();
-  for (const activity of paidActivitiesStore) {
-    paidActivities.add(activity.id);
+app.get("/activities", (req, res) => {
+  const wallet = normalizeWallet(req.query.wallet);
+  if (!wallet) {
+    return res.status(400).json({ error: "Wallet non valido" });
   }
-  return res.json(paidActivitiesStore);
+  const store = loadPaidActivitiesStore();
+  const activities = getWalletActivities(store, wallet);
+  return res.json(activities);
 });
 
-app.get("/user/stats", async (_req, res) => {
+app.get("/user/stats", async (req, res) => {
   try {
-    const balanceWei = await fetchBalance();
+    const wallet = normalizeWallet(req.query.wallet);
+    if (!wallet) {
+      return res.status(400).json({ error: "Wallet non valido" });
+    }
+    const balanceWei = await fetchBalance(wallet);
     const rank = computeRank(balanceWei);
     const xpMissing = computeXpMissing(balanceWei);
 
-    const db = loadDatabase();
+    const dbStore = loadDatabase();
+    const db = getWalletDb(dbStore, wallet);
     const unlockedBadges = Array.isArray(db.unlockedBadges)
       ? db.unlockedBadges
       : [];
@@ -578,7 +590,7 @@ app.get("/user/stats", async (_req, res) => {
           icon: "zap"
         });
         db.unlockedBadges = unlockedBadges;
-        saveDatabase(db);
+        saveDatabase(dbStore);
       }
     }
 
@@ -597,7 +609,6 @@ app.get("/user/stats", async (_req, res) => {
 
 app.post("/strava/sync", async (req, res) => {
   try {
-    refreshPaidActivities();
     const wallet = normalizeWallet(req.body?.walletAddress || req.query?.wallet);
     if (!wallet) {
       return res.status(400).json({ status: "error", message: "Wallet non valido" });
@@ -655,30 +666,42 @@ app.post("/strava/sync", async (req, res) => {
     }
 
     const activities = await fetchRecentActivities(accessToken);
-    const db = loadDatabase();
+    const store = loadPaidActivitiesStore();
+    const walletActivities = getWalletActivities(store, wallet);
+    const paidIds = new Set(walletActivities.map((activity) => activity.id));
+
+    const dbStore = loadDatabase();
+    const db = getWalletDb(dbStore, wallet);
     const perfectWeek = checkPerfectWeekBonus(activities, db);
 
-    const { pendingActivities, totalReward } = evaluateActivities(activities);
+    const { pendingActivities, totalReward } = evaluateActivities(
+      activities,
+      paidIds
+    );
     const totalRewardWithBonus = totalReward + perfectWeek.bonusReward;
     if (totalRewardWithBonus === 0) {
-      checkBadgeUnlock(computeBadgeStats(activities, db.stats), db);
+      const stats = computeBadgeStats(activities, db.stats);
+      db.stats = stats;
+      checkBadgeUnlock(stats, db);
+      saveDatabase(dbStore);
       return res.json({
         status: "no_new_activities",
         totalReward: 0,
-        activities: paidActivitiesStore,
+        activities: walletActivities,
         perfectWeekProgress: perfectWeek.completedCount
       });
     }
 
-    await mintReward(totalRewardWithBonus);
+    await mintReward(totalRewardWithBonus, wallet);
 
-    paidActivitiesStore = paidActivitiesStore.concat(pendingActivities);
-    for (const activity of pendingActivities) {
-      paidActivities.add(activity.id);
-    }
-    savePaidActivities(paidActivitiesStore);
+    const updatedActivities = walletActivities.concat(pendingActivities);
+    store.wallets[wallet] = updatedActivities;
+    savePaidActivitiesStore(store);
 
-    checkBadgeUnlock(computeBadgeStats(activities, db.stats), db);
+    const stats = computeBadgeStats(activities, db.stats);
+    db.stats = stats;
+    checkBadgeUnlock(stats, db);
+    saveDatabase(dbStore);
 
     return res.json({
       status: "minted",
@@ -686,7 +709,7 @@ app.post("/strava/sync", async (req, res) => {
       perfectWeekBonus: perfectWeek.bonusReward,
       perfectWeekProgress: perfectWeek.completedCount,
       validCount: pendingActivities.length,
-      activities: paidActivitiesStore
+      activities: updatedActivities
     });
   } catch (err) {
     console.error("Strava sync error:", err);
@@ -696,7 +719,6 @@ app.post("/strava/sync", async (req, res) => {
 
 app.get("/strava/callback", async (req, res) => {
   try {
-    refreshPaidActivities();
     const { code, error, state } = req.query;
     const wallet = normalizeWallet(state);
 
@@ -754,26 +776,38 @@ app.get("/strava/callback", async (req, res) => {
     }
 
     const activities = await fetchRecentActivities(accessToken);
-    const db = loadDatabase();
+    const store = loadPaidActivitiesStore();
+    const walletActivities = getWalletActivities(store, wallet);
+    const paidIds = new Set(walletActivities.map((activity) => activity.id));
+
+    const dbStore = loadDatabase();
+    const db = getWalletDb(dbStore, wallet);
     const perfectWeek = checkPerfectWeekBonus(activities, db);
 
-    const { pendingActivities, totalReward } = evaluateActivities(activities);
+    const { pendingActivities, totalReward } = evaluateActivities(
+      activities,
+      paidIds
+    );
     const totalRewardWithBonus = totalReward + perfectWeek.bonusReward;
 
     if (totalRewardWithBonus === 0) {
-      checkBadgeUnlock(computeBadgeStats(activities, db.stats), db);
+      const stats = computeBadgeStats(activities, db.stats);
+      db.stats = stats;
+      checkBadgeUnlock(stats, db);
+      saveDatabase(dbStore);
       return res.redirect(`${FRONTEND_URL}/?no_new_activities=true`);
     }
 
-    await mintReward(totalRewardWithBonus);
+    await mintReward(totalRewardWithBonus, wallet);
 
-    paidActivitiesStore = paidActivitiesStore.concat(pendingActivities);
-    for (const activity of pendingActivities) {
-      paidActivities.add(activity.id);
-    }
-    savePaidActivities(paidActivitiesStore);
+    const updatedActivities = walletActivities.concat(pendingActivities);
+    store.wallets[wallet] = updatedActivities;
+    savePaidActivitiesStore(store);
 
-    checkBadgeUnlock(computeBadgeStats(activities, db.stats), db);
+    const stats = computeBadgeStats(activities, db.stats);
+    db.stats = stats;
+    checkBadgeUnlock(stats, db);
+    saveDatabase(dbStore);
 
     return res.redirect(`${FRONTEND_URL}/?minted=true`);
   } catch (err) {
