@@ -579,7 +579,8 @@ function HomeContent() {
       sonicBurst: Boolean(userStats.badges?.sonicBurst),
       hydroMaster: Boolean(userStats.badges?.hydroMaster),
       ironProtocol: Boolean(userStats.badges?.ironProtocol),
-      zenFocus: Boolean(userStats.badges?.zenFocus)
+      zenFocus: Boolean(userStats.badges?.zenFocus),
+      bet: Boolean(userStats.badges?.bet)
     };
 
     const unlockedIds = Object.entries(currentBadges)
@@ -1253,11 +1254,15 @@ function HomeContent() {
       ironProtocol: ironSessions >= 5
     };
   }, [activities]);
+  const investorTarget = 500;
+  const investorProgress = 150;
+  const investorUnlocked = investorProgress >= investorTarget;
   const resolvedBadgeUnlocks = {
     sonicBurst: Boolean(unlockedSpecialBadges.sonicBurst || derivedBadgeUnlocks.sonicBurst),
     hydroMaster: Boolean(unlockedSpecialBadges.hydroMaster || derivedBadgeUnlocks.hydroMaster),
     ironProtocol: Boolean(unlockedSpecialBadges.ironProtocol || derivedBadgeUnlocks.ironProtocol),
-    zenFocus: Boolean(unlockedSpecialBadges.zenFocus)
+    zenFocus: Boolean(unlockedSpecialBadges.zenFocus),
+    bet: Boolean(unlockedSpecialBadges.bet || investorUnlocked)
   };
   const trophyBadges = [
     {
@@ -1287,6 +1292,13 @@ function HomeContent() {
       requirement: "5 sessioni mindfulness",
       image: "/badges/badge-zen.png",
       glow: "shadow-[0_0_18px_rgba(45,212,191,0.35)]"
+    },
+    {
+      id: "bet",
+      name: "Investitore",
+      requirement: "Scommetti 500 LIFE",
+      image: "/badges/badge-bet.png",
+      glow: "shadow-[0_0_18px_rgba(251,191,36,0.4)]"
     }
   ];
 
@@ -1578,7 +1590,7 @@ function HomeContent() {
                       : ""
                   }`}
                 >
-                  <div className="space-y-2">
+                  <div className="flex flex-col gap-2 flex-1">
                     <p className="text-xs uppercase tracking-[0.3em] text-cyan-300">Livello</p>
                     <div className="flex items-center justify-between gap-3">
                       <h2 className="text-xl font-semibold text-white">
@@ -1632,23 +1644,21 @@ function HomeContent() {
                     ) : null}
                   </div>
 
-                  <div className="mt-auto">
-                    <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/60 p-3 transition-all duration-500">
-                      <div
-                        className={`flex h-10 w-10 items-center justify-center rounded-xl ${
-                          ignitionUnlocked
-                            ? "bg-cyan-500/20 text-cyan-200"
-                            : "bg-slate-800/60 text-slate-500"
-                        }`}
-                      >
-                        {ignitionUnlocked ? <Zap className="h-5 w-5" /> : <Lock className="h-5 w-5" />}
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-white">The Ignition</p>
-                        <p className="text-xs text-slate-400">
-                          {ignitionUnlocked ? "Sbloccato" : "Bloccato"}
-                        </p>
-                      </div>
+                  <div className="mt-auto flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/60 p-3 transition-all duration-500">
+                    <div
+                      className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+                        ignitionUnlocked
+                          ? "bg-cyan-500/20 text-cyan-200"
+                          : "bg-slate-800/60 text-slate-500"
+                      }`}
+                    >
+                      {ignitionUnlocked ? <Zap className="h-5 w-5" /> : <Lock className="h-5 w-5" />}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-white">The Ignition</p>
+                      <p className="text-xs text-slate-400">
+                        {ignitionUnlocked ? "Sbloccato" : "Bloccato"}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -1846,12 +1856,14 @@ function HomeContent() {
                       reward="50"
                       rewardUnit="XP"
                       hideReward={!isWalletConnected}
-                      current={150}
-                      target={500}
-                      status="150/500 LIFE scommessi"
+                      current={investorProgress}
+                      target={investorTarget}
+                      status={`${investorProgress}/${investorTarget} LIFE scommessi`}
                       isComplete={false}
                       isActive={false}
-                      className="w-full sm:col-span-2"
+                      showDots={false}
+                      progressTone="bg-amber-400"
+                      className="w-full sm:col-span-2 border-yellow-600/50 hover:border-yellow-500/70"
                     />
                   </div>
                 </>
@@ -1909,61 +1921,62 @@ function HomeContent() {
                 isDisconnected ? "grayscale-[0.3] saturate-75" : ""
               } ${isActivitiesExpanded ? "" : "lg:h-full"}`}
             >
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.3em] text-cyan-300">LOG ATTIVITA</p>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-semibold text-white">Cronologia</h2>
-                    {isWalletConnected &&
-                    !isLoading &&
-                    !loadError &&
-                    (activities.length === 0 || syncNotice === "synced") ? (
-                      <CheckCircle className="h-4 w-4 text-emerald-300 drop-shadow-[0_0_6px_rgba(16,185,129,0.7)]" />
+              <div className="flex flex-col flex-1 min-h-0">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.3em] text-cyan-300">LOG ATTIVITA</p>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-lg font-semibold text-white">Cronologia</h2>
+                      {isWalletConnected &&
+                      !isLoading &&
+                      !loadError &&
+                      (activities.length === 0 || syncNotice === "synced") ? (
+                        <CheckCircle className="h-4 w-4 text-emerald-300 drop-shadow-[0_0_6px_rgba(16,185,129,0.7)]" />
+                      ) : null}
+                    </div>
+                    <p className="mt-1 text-xs text-slate-200">
+                      Questa settimana: {weeklyCounts.run} corse, {weeklyCounts.swim} nuoti,
+                      {" "}
+                      {formatDistance(weeklyTotals.totalDistance)} totali
+                    </p>
+                    <div className="mt-3 flex items-end gap-1">
+                      {weeklyActivityTotals.map((value, index) => {
+                        const height = Math.max(
+                          8,
+                          Math.round((value / weeklyActivityMax) * 32)
+                        );
+                        return (
+                          <span
+                            key={`week-activity-${index}`}
+                            className="flex h-8 w-2 items-end"
+                          >
+                            <span
+                              className={`w-full rounded-full ${
+                                value > 0 ? "bg-cyan-300/80" : "bg-slate-700/70"
+                              }`}
+                              style={{ height: `${height}px` }}
+                            />
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <StatusBadge label="Run + Swim + Iron + Mind" tone="neutral" />
+                    {activeFilter ? (
+                      <button
+                        type="button"
+                        onClick={() => setActiveFilter(null)}
+                        className="inline-flex items-center rounded-full border border-cyan-400/40 px-3 py-1 text-[11px] font-semibold text-cyan-100 transition hover:border-cyan-300/70 hover:text-cyan-50"
+                      >
+                        Reset filtro
+                      </button>
                     ) : null}
                   </div>
-                  <p className="mt-1 text-xs text-slate-200">
-                    Questa settimana: {weeklyCounts.run} corse, {weeklyCounts.swim} nuoti,
-                    {" "}
-                    {formatDistance(weeklyTotals.totalDistance)} totali
-                  </p>
-                  <div className="mt-3 flex items-end gap-1">
-                    {weeklyActivityTotals.map((value, index) => {
-                      const height = Math.max(
-                        8,
-                        Math.round((value / weeklyActivityMax) * 32)
-                      );
-                      return (
-                        <span
-                          key={`week-activity-${index}`}
-                          className="flex h-8 w-2 items-end"
-                        >
-                          <span
-                            className={`w-full rounded-full ${
-                              value > 0 ? "bg-cyan-300/80" : "bg-slate-700/70"
-                            }`}
-                            style={{ height: `${height}px` }}
-                          />
-                        </span>
-                      );
-                    })}
-                  </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <StatusBadge label="Run + Swim + Iron + Mind" tone="neutral" />
-                  {activeFilter ? (
-                    <button
-                      type="button"
-                      onClick={() => setActiveFilter(null)}
-                      className="inline-flex items-center rounded-full border border-cyan-400/40 px-3 py-1 text-[11px] font-semibold text-cyan-100 transition hover:border-cyan-300/70 hover:text-cyan-50"
-                    >
-                      Reset filtro
-                    </button>
-                  ) : null}
-                </div>
-              </div>
 
-              {!isWalletConnected ? (
-                <div className="relative mt-4 flex-1 min-h-0">
+                {!isWalletConnected ? (
+                  <div className="relative mt-4 flex-1 min-h-0">
                   <div className="space-y-3 blur-sm opacity-50">
                     {(activities.length > 0 ? activities.slice(0, 6) : Array.from({ length: 6 }).map((_, index) => ({
                       id: `ghost-${index}`,
@@ -1998,80 +2011,81 @@ function HomeContent() {
                       Sblocca la tua storia atletica. Connetti il wallet per visualizzare i tuoi successi on-chain.
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="mt-4 flex flex-1 flex-col">
-                  <div className="space-y-3">
-                    {isLoading ? (
-                      <StatusBadge label="Caricamento attività..." tone="neutral" />
-                    ) : loadError ? (
-                      <StatusBadge label={loadError} tone="error" />
-                  ) : visibleActivities.length === 0 ? (
-                    <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-5 text-center">
-                      <div className="text-3xl">🏁</div>
-                      <p className="mt-3 text-sm font-semibold text-white">
-                        {activeFilter
-                          ? "Nessuna attività per questo filtro."
-                          : "Sei pronto a iniziare?"}
-                      </p>
-                      <p className="mt-2 text-xs text-slate-300">
-                        Completa un allenamento su Strava e torna qui per vedere i
-                        tuoi progressi.
-                      </p>
-                    </div>
-                  ) : (
-                    activityPreview.map((activity) => {
-                      const display = getActivityDisplay(activity);
-                      const rewardShare = formatRewardShare(activity.reward ?? 0);
-                      return (
-                          <div
-                            key={activity.id ?? `${activity.type}-${activity.date}`}
-                            className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-slate-900/40 backdrop-blur-xl p-3 shadow-2xl transition-all duration-500"
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-2">
-                                <span className="text-base">{activityIcon(activity.type)}</span>
-                                <span className="text-xs text-slate-100 sm:text-sm">
-                                  {display.label}{" "}
-                                  <span className="font-mono text-slate-200">
-                                    {display.detail}
-                                  </span>
-                                {isWalletConnected ? (
-                                  <span className="font-mono text-cyan-200">
-                                    {" "}
-                                    +{activity.reward ?? 0} LIFE
-                                  {rewardShare ? (
-                                    <span className="ml-2 text-[10px] text-slate-200">
-                                      ({rewardShare})
+                  </div>
+                ) : (
+                  <div className="mt-4 flex flex-1 flex-col">
+                    <div className="space-y-3">
+                      {isLoading ? (
+                        <StatusBadge label="Caricamento attività..." tone="neutral" />
+                      ) : loadError ? (
+                        <StatusBadge label={loadError} tone="error" />
+                    ) : visibleActivities.length === 0 ? (
+                      <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-5 text-center">
+                        <div className="text-3xl">🏁</div>
+                        <p className="mt-3 text-sm font-semibold text-white">
+                          {activeFilter
+                            ? "Nessuna attività per questo filtro."
+                            : "Sei pronto a iniziare?"}
+                        </p>
+                        <p className="mt-2 text-xs text-slate-300">
+                          Completa un allenamento su Strava e torna qui per vedere i
+                          tuoi progressi.
+                        </p>
+                      </div>
+                    ) : (
+                      activityPreview.map((activity) => {
+                        const display = getActivityDisplay(activity);
+                        const rewardShare = formatRewardShare(activity.reward ?? 0);
+                        return (
+                            <div
+                              key={activity.id ?? `${activity.type}-${activity.date}`}
+                              className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-slate-900/40 backdrop-blur-xl p-3 shadow-2xl transition-all duration-500"
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-base">{activityIcon(activity.type)}</span>
+                                  <span className="text-xs text-slate-100 sm:text-sm">
+                                    {display.label}{" "}
+                                    <span className="font-mono text-slate-200">
+                                      {display.detail}
+                                    </span>
+                                  {isWalletConnected ? (
+                                    <span className="font-mono text-cyan-200">
+                                      {" "}
+                                      +{activity.reward ?? 0} LIFE
+                                    {rewardShare ? (
+                                      <span className="ml-2 text-[10px] text-slate-200">
+                                        ({rewardShare})
+                                      </span>
+                                    ) : null}
                                     </span>
                                   ) : null}
                                   </span>
-                                ) : null}
-                                </span>
-                              </div>
-                              <div className="hidden sm:inline-flex">
-                                <StatusBadge
-                                  label={formatActivityType(activity.type)}
-                                  tone="neutral"
-                                />
+                                </div>
+                                <div className="hidden sm:inline-flex">
+                                  <StatusBadge
+                                    label={formatActivityType(activity.type)}
+                                    tone="neutral"
+                                  />
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        );
-                      })
-                    )}
+                          );
+                        })
+                      )}
+                    </div>
+                    {!isLoading && !loadError && hasMoreActivities ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllActivities((prev) => !prev)}
+                        className="mt-auto inline-flex items-center justify-center rounded-full border border-cyan-400/40 px-4 py-2 text-xs font-semibold text-cyan-100 transition hover:border-cyan-300/70 hover:text-cyan-50"
+                      >
+                        {isActivitiesExpanded ? "Nascondi" : "Mostra di piu"}
+                      </button>
+                    ) : null}
                   </div>
-                  {!isLoading && !loadError && hasMoreActivities ? (
-                    <button
-                      type="button"
-                      onClick={() => setShowAllActivities((prev) => !prev)}
-                      className="mt-auto inline-flex items-center justify-center rounded-full border border-cyan-400/40 px-4 py-2 text-xs font-semibold text-cyan-100 transition hover:border-cyan-300/70 hover:text-cyan-50"
-                    >
-                      {isActivitiesExpanded ? "Nascondi" : "Mostra di piu"}
-                    </button>
-                  ) : null}
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </section>
         </section>
@@ -2137,6 +2151,8 @@ function MissionCard({
   isComplete,
   isActive,
   onClick,
+  showDots = true,
+  progressTone,
   className
 }: {
   icon: ReactNode;
@@ -2152,6 +2168,8 @@ function MissionCard({
   isComplete?: boolean;
   isActive?: boolean;
   onClick?: () => void;
+  showDots?: boolean;
+  progressTone?: string;
   className?: string;
 }) {
   const safeCurrent = Math.max(0, current ?? 0);
@@ -2164,6 +2182,9 @@ function MissionCard({
   const statusTone = isCompleted
     ? "border-emerald-400/40 text-emerald-200"
     : "border-white/10 text-white";
+  const progressClass = isCompleted
+    ? "bg-emerald-400"
+    : progressTone ?? "bg-cyan-400";
 
   return (
     <button
@@ -2193,9 +2214,7 @@ function MissionCard({
             <h3 className="text-sm font-semibold text-white sm:text-base">{title}</h3>
             <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-800/80">
               <div
-                className={`h-full rounded-full ${
-                  isCompleted ? "bg-emerald-400" : "bg-cyan-400"
-                }`}
+                className={`h-full rounded-full ${progressClass}`}
                 style={{ width: `${progressPct}%` }}
               />
             </div>
@@ -2227,7 +2246,7 @@ function MissionCard({
         </div>
       </div>
 
-      {!hideReward ? (
+      {!hideReward && showDots ? (
         <div className="mt-2 flex items-center justify-between">
           <div className="flex items-center gap-1">
             {Array.from({ length: safeTarget }).map((_, index) => (
