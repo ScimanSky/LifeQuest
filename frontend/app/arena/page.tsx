@@ -747,6 +747,13 @@ export default function ArenaPage() {
                         : duel.status === "matched"
                           ? "Sfida attiva"
                           : "Sfida aperta";
+                const endTimestamp = duel.endAt
+                  ? new Date(duel.endAt).getTime()
+                  : null;
+                const isExpired =
+                  Boolean(endTimestamp) && endTimestamp <= Date.now();
+                const isResolving =
+                  duel.status === "matched" && Boolean(isExpired);
                 const isWinner =
                   Boolean(address && duel.winnerAddress) &&
                   duel.winnerAddress?.toLowerCase() ===
@@ -869,6 +876,12 @@ export default function ArenaPage() {
                     <Timer className="h-4 w-4 text-cyan-200" />
                     Tempo rimasto: {duel.timeLeft}
                   </div>
+                  {isResolving ? (
+                    <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-amber-400/40 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold text-amber-200">
+                      <Timer className="h-3 w-3" />
+                      In attesa di risoluzione automatica...
+                    </div>
+                  ) : null}
 
                   <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                     <span className="text-xs uppercase tracking-[0.3em] text-slate-400">
