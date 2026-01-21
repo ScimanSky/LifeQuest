@@ -686,6 +686,20 @@ function HomeContent() {
           });
           return;
         }
+        if (data?.status === "rate_limited") {
+          const retryAfter = Number(data?.retryAfter ?? 60);
+          const waitSeconds = Number.isFinite(retryAfter) ? retryAfter : 60;
+          const message = `Limite Strava raggiunto. Riprova tra ${waitSeconds}s.`;
+          toast.error(message, {
+            style: {
+              background: "#0f172a",
+              color: "#fecdd3",
+              border: "1px solid rgba(244, 63, 94, 0.4)"
+            }
+          });
+          setLoadError(message);
+          return;
+        }
         if (data?.status === "needs_auth") {
           toast("Collega Strava per continuare la sincronizzazione.", {
             icon: "🔗",

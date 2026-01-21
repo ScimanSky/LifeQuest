@@ -37,6 +37,7 @@ const ARENA_TEST_MODE =
   process.env.ARENA_TEST_MODE === "true" ||
   process.env.ARENA_TEST_MODE === "1" ||
   !process.env.ARENA_TEST_MODE;
+const ARENA_PROGRESS_CACHE_MS = 60000;
 const IRON_PROTOCOL_TYPES = new Set([
   "WeightTraining",
   "Workout",
@@ -62,11 +63,44 @@ const DATABASE_PATH = path.join(__dirname, "database.json");
 const SUPABASE_URL =
   process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const arenaProgressCache = new Map();
 
 function normalizeWallet(address) {
   if (!address || typeof address !== "string") return null;
   if (!ethers.isAddress(address)) return null;
   return address.toLowerCase();
+}
+
+function buildStravaRateLimitError(error) {
+  const retryAfter = Number(error?.response?.headers?.["retry-after"] || 60);
+  const err = new Error("Rate limit Strava");
+  err.code = "STRAVA_RATE_LIMIT";
+  err.retryAfter = Number.isFinite(retryAfter) ? retryAfter : 60;
+  return err;
+}
+
+function isStravaRateLimitError(error) {
+  return (
+    error?.code === "STRAVA_RATE_LIMIT" ||
+    error?.response?.status === 429
+  );
+}
+
+function getArenaCacheKey(wallet, type, startAt, endAt) {
+  return `${wallet}:${type}:${startAt}:${endAt ?? "open"}`;
+}
+
+function getCachedArenaProgress(wallet, type, startAt, endAt) {
+  const key = getArenaCacheKey(wallet, type, startAt, endAt);
+  const entry = arenaProgressCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.fetchedAt > ARENA_PROGRESS_CACHE_MS) return null;
+  return entry.progress;
+}
+
+function setCachedArenaProgress(wallet, type, startAt, endAt, progress) {
+  const key = getArenaCacheKey(wallet, type, startAt, endAt);
+  arenaProgressCache.set(key, { progress, fetchedAt: Date.now() });
 }
 
 function ensureSupabaseConfig() {
@@ -629,20 +663,28 @@ async function fetchActivitiesInRange(accessToken, startAt, endAt) {
   const before = Math.floor(new Date(endAt).getTime() / 1000);
 
   while (true) {
-    const response = await axios.get(
-      "https://www.strava.com/api/v3/athlete/activities",
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`
-        },
-        params: {
-          per_page: STRAVA_PER_PAGE,
-          page,
-          after,
-          before
+    let response;
+    try {
+      response = await axios.get(
+        "https://www.strava.com/api/v3/athlete/activities",
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`
+          },
+          params: {
+            per_page: STRAVA_PER_PAGE,
+            page,
+            after,
+            before
+          }
         }
+      );
+    } catch (error) {
+      if (error?.response?.status === 429) {
+        throw buildStravaRateLimitError(error);
       }
-    );
+      throw error;
+    }
 
     const data = Array.isArray(response.data) ? response.data : [];
     if (data.length === 0) {
@@ -664,19 +706,27 @@ async function fetchRecentActivities(accessToken) {
   let page = 1;
 
   while (true) {
-    const response = await axios.get(
-      "https://www.strava.com/api/v3/athlete/activities",
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`
-        },
-        params: {
-          per_page: STRAVA_PER_PAGE,
-          page,
-          after: STRAVA_AFTER_TIMESTAMP
+    let response;
+    try {
+      response = await axios.get(
+        "https://www.strava.com/api/v3/athlete/activities",
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`
+          },
+          params: {
+            per_page: STRAVA_PER_PAGE,
+            page,
+            after: STRAVA_AFTER_TIMESTAMP
+          }
         }
+      );
+    } catch (error) {
+      if (error?.response?.status === 429) {
+        throw buildStravaRateLimitError(error);
       }
-    );
+      throw error;
+    }
 
     const data = Array.isArray(response.data) ? response.data : [];
     if (data.length === 0) {
@@ -834,8 +884,22 @@ async function resolveArenaChallenge(challenge) {
     return { status: "missing_tokens", missing_wallets: missingWallets };
   }
 
-  const creatorActivities = creatorToken?.refresh_token
-    ? await fetchActivitiesInRange(
+  let creatorProgress = getCachedArenaProgress(
+    creator,
+    challenge.type,
+    startAt,
+    endAt
+  );
+  let opponentProgress = getCachedArenaProgress(
+    opponent,
+    challenge.type,
+    startAt,
+    endAt
+  );
+
+  if (creatorProgress === null && creatorToken?.refresh_token) {
+    try {
+      const creatorActivities = await fetchActivitiesInRange(
         await refreshStravaAccessToken(
           creator,
           creatorToken.refresh_token,
@@ -843,10 +907,23 @@ async function resolveArenaChallenge(challenge) {
         ),
         startAt,
         endAt
-      )
-    : [];
-  const opponentActivities = opponentToken?.refresh_token
-    ? await fetchActivitiesInRange(
+      );
+      creatorProgress = computeArenaProgress(creatorActivities, challenge.type);
+      setCachedArenaProgress(creator, challenge.type, startAt, endAt, creatorProgress);
+    } catch (error) {
+      if (isStravaRateLimitError(error)) {
+        return {
+          status: "rate_limited",
+          retry_after: error.retryAfter || 60
+        };
+      }
+      throw error;
+    }
+  }
+
+  if (opponentProgress === null && opponentToken?.refresh_token) {
+    try {
+      const opponentActivities = await fetchActivitiesInRange(
         await refreshStravaAccessToken(
           opponent,
           opponentToken.refresh_token,
@@ -854,15 +931,28 @@ async function resolveArenaChallenge(challenge) {
         ),
         startAt,
         endAt
-      )
-    : [];
+      );
+      opponentProgress = computeArenaProgress(opponentActivities, challenge.type);
+      setCachedArenaProgress(
+        opponent,
+        challenge.type,
+        startAt,
+        endAt,
+        opponentProgress
+      );
+    } catch (error) {
+      if (isStravaRateLimitError(error)) {
+        return {
+          status: "rate_limited",
+          retry_after: error.retryAfter || 60
+        };
+      }
+      throw error;
+    }
+  }
 
-  const creatorProgress = creatorToken?.refresh_token
-    ? computeArenaProgress(creatorActivities, challenge.type)
-    : 0;
-  const opponentProgress = opponentToken?.refresh_token
-    ? computeArenaProgress(opponentActivities, challenge.type)
-    : 0;
+  if (!creatorToken?.refresh_token) creatorProgress = 0;
+  if (!opponentToken?.refresh_token) opponentProgress = 0;
 
   const diff = creatorProgress - opponentProgress;
   const epsilon = 0.0001;
@@ -929,8 +1019,22 @@ async function updateArenaProgress(challenge) {
     return { status: "missing_tokens", missing_wallets: missingWallets };
   }
 
-  const creatorActivities = creatorToken?.refresh_token
-    ? await fetchActivitiesInRange(
+  let creatorProgress = getCachedArenaProgress(
+    creator,
+    challenge.type,
+    startAt,
+    endAt
+  );
+  let opponentProgress = getCachedArenaProgress(
+    opponent,
+    challenge.type,
+    startAt,
+    endAt
+  );
+
+  if (creatorProgress === null && creatorToken?.refresh_token) {
+    try {
+      const creatorActivities = await fetchActivitiesInRange(
         await refreshStravaAccessToken(
           creator,
           creatorToken.refresh_token,
@@ -938,10 +1042,23 @@ async function updateArenaProgress(challenge) {
         ),
         startAt,
         rangeEnd
-      )
-    : [];
-  const opponentActivities = opponentToken?.refresh_token
-    ? await fetchActivitiesInRange(
+      );
+      creatorProgress = computeArenaProgress(creatorActivities, challenge.type);
+      setCachedArenaProgress(creator, challenge.type, startAt, endAt, creatorProgress);
+    } catch (error) {
+      if (isStravaRateLimitError(error)) {
+        return {
+          status: "rate_limited",
+          retry_after: error.retryAfter || 60
+        };
+      }
+      throw error;
+    }
+  }
+
+  if (opponentProgress === null && opponentToken?.refresh_token) {
+    try {
+      const opponentActivities = await fetchActivitiesInRange(
         await refreshStravaAccessToken(
           opponent,
           opponentToken.refresh_token,
@@ -949,15 +1066,28 @@ async function updateArenaProgress(challenge) {
         ),
         startAt,
         rangeEnd
-      )
-    : [];
+      );
+      opponentProgress = computeArenaProgress(opponentActivities, challenge.type);
+      setCachedArenaProgress(
+        opponent,
+        challenge.type,
+        startAt,
+        endAt,
+        opponentProgress
+      );
+    } catch (error) {
+      if (isStravaRateLimitError(error)) {
+        return {
+          status: "rate_limited",
+          retry_after: error.retryAfter || 60
+        };
+      }
+      throw error;
+    }
+  }
 
-  const creatorProgress = creatorToken?.refresh_token
-    ? computeArenaProgress(creatorActivities, challenge.type)
-    : 0;
-  const opponentProgress = opponentToken?.refresh_token
-    ? computeArenaProgress(opponentActivities, challenge.type)
-    : 0;
+  if (!creatorToken?.refresh_token) creatorProgress = 0;
+  if (!opponentToken?.refresh_token) opponentProgress = 0;
 
   await updateChallengeById(challenge.id, {
     creator_progress: creatorProgress,
@@ -1201,6 +1331,13 @@ app.post("/strava/sync", async (req, res) => {
       activities: updatedActivities
     });
   } catch (err) {
+    if (isStravaRateLimitError(err)) {
+      return res.status(429).json({
+        status: "rate_limited",
+        retryAfter: err.retryAfter || 60,
+        message: "Limite Strava raggiunto. Riprova tra poco."
+      });
+    }
     console.error("Strava sync error:", err);
     return res.status(500).json({ status: "error", message: "Errore interno" });
   }
@@ -1245,7 +1382,7 @@ app.post("/arena/resolve", async (req, res) => {
       return res.json({ status: challenge.status });
     }
     const result = await resolveArenaChallenge(challenge);
-    if (result?.status === "missing_tokens") {
+    if (result?.status === "missing_tokens" || result?.status === "rate_limited") {
       return res.json(result);
     }
     return res.json(result);
@@ -1270,7 +1407,10 @@ app.post("/arena/progress", async (req, res) => {
       return res.json({ status: challenge.status });
     }
     const progress = await updateArenaProgress(challenge);
-    if (progress?.status === "missing_tokens") {
+    if (
+      progress?.status === "missing_tokens" ||
+      progress?.status === "rate_limited"
+    ) {
       return res.json(progress);
     }
     return res.json({ status: "updated", ...progress });

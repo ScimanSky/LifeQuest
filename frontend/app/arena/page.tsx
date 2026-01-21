@@ -26,7 +26,8 @@ const rivals = [
 
 const CHALLENGE_DURATION_DAYS = 7;
 const CHALLENGE_DURATION_OPTIONS = ["1", "2", "3", "4", "5", "6", "7"];
-const ARENA_POLL_INTERVAL_MS = 20000;
+const ARENA_POLL_INTERVAL_MS = 60000;
+const ARENA_POLLING_ENABLED = false;
 const BACKEND_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 const LIFE_TOKEN_ADDRESS = (process.env.NEXT_PUBLIC_LIFE_TOKEN_ADDRESS ??
@@ -223,6 +224,11 @@ function buildMissingTokenMessage(
   return "Strava non collegato per aggiornare i progressi.";
 }
 
+function buildRateLimitMessage(retryAfter?: number) {
+  const seconds = Number.isFinite(retryAfter) ? Math.max(10, retryAfter) : 60;
+  return `Limite Strava raggiunto. Riprova tra ${seconds}s.`;
+}
+
 function parseNumericInput(value: string) {
   const cleaned = value.replace(/[^\d.,-]/g, "").replace(",", ".");
   return Number(cleaned);
@@ -331,17 +337,27 @@ export default function ArenaPage() {
           body: JSON.stringify({ challengeId: duel.id })
         });
         const data = await response.json();
-        if (data?.status === "missing_tokens" || data?.status === "partial") {
+        if (
+          data?.status === "missing_tokens" ||
+          data?.status === "partial" ||
+          data?.status === "rate_limited"
+        ) {
           const missing = Array.isArray(data.missing_wallets)
             ? data.missing_wallets
             : [];
+          const rateMessage =
+            data?.status === "rate_limited"
+              ? buildRateLimitMessage(data?.retry_after)
+              : null;
           setArenaWarnings((prev) => ({
             ...prev,
-            [duel.id]: buildMissingTokenMessage(
-              missing,
-              address,
-              data?.status === "partial"
-            )
+            [duel.id]:
+              rateMessage ??
+              buildMissingTokenMessage(
+                missing,
+                address,
+                data?.status === "partial"
+              )
           }));
         } else {
           setArenaWarnings((prev) => {
@@ -368,17 +384,27 @@ export default function ArenaPage() {
         body: JSON.stringify({ challengeId: duel.id })
       });
       const data = await response.json();
-      if (data?.status === "missing_tokens" || data?.status === "partial") {
+      if (
+        data?.status === "missing_tokens" ||
+        data?.status === "partial" ||
+        data?.status === "rate_limited"
+      ) {
         const missing = Array.isArray(data.missing_wallets)
           ? data.missing_wallets
           : [];
+        const rateMessage =
+          data?.status === "rate_limited"
+            ? buildRateLimitMessage(data?.retry_after)
+            : null;
         setArenaWarnings((prev) => ({
           ...prev,
-          [duel.id]: buildMissingTokenMessage(
-            missing,
-            address,
-            data?.status === "partial"
-          )
+          [duel.id]:
+            rateMessage ??
+            buildMissingTokenMessage(
+              missing,
+              address,
+              data?.status === "partial"
+            )
         }));
       } else {
         setArenaWarnings((prev) => {
@@ -393,6 +419,7 @@ export default function ArenaPage() {
   }, [address]);
 
   useEffect(() => {
+    if (!ARENA_POLLING_ENABLED) return;
     if (!challenges.length) return;
     const expired = challenges.filter(
       (duel) =>
@@ -405,6 +432,7 @@ export default function ArenaPage() {
   }, [challenges, fetchChallenges, resolveExpiredChallenge]);
 
   useEffect(() => {
+    if (!ARENA_POLLING_ENABLED) return;
     if (!challenges.length) return;
     const active = challenges.filter(
       (duel) => duel.status === "matched" && duel.startAt
@@ -417,6 +445,7 @@ export default function ArenaPage() {
   }, [challenges, fetchChallenges, updateChallengeProgress]);
 
   useEffect(() => {
+    if (!ARENA_POLLING_ENABLED) return;
     if (typeof window === "undefined") return;
     if (!BACKEND_BASE_URL) return;
     if (!challenges.length) return;
