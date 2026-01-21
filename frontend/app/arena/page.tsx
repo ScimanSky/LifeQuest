@@ -28,6 +28,7 @@ const CHALLENGE_DURATION_DAYS = 7;
 const CHALLENGE_DURATION_OPTIONS = ["1", "2", "3", "4", "5", "6", "7"];
 const ARENA_POLL_INTERVAL_MS = 60000;
 const ARENA_POLLING_ENABLED = false;
+const ARENA_ARCHIVE_AFTER_DAYS = 1;
 const BACKEND_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 const LIFE_TOKEN_ADDRESS = (process.env.NEXT_PUBLIC_LIFE_TOKEN_ADDRESS ??
@@ -59,6 +60,7 @@ type ArenaDuel = {
   durationDays: number;
   startAt?: string | null;
   endAt?: string | null;
+  resolvedAt?: string | null;
   you: { name: string; progress: number; total: number };
   rival: { name: string; progress: number; total: number };
   timeLeft: string;
@@ -84,6 +86,7 @@ type ChallengeRow = {
   creator_claimed?: boolean | null;
   opponent_claimed?: boolean | null;
   created_at?: string | null;
+  resolved_at?: string | null;
 };
 
 function progressPercent(current: number, total: number) {
@@ -135,6 +138,7 @@ function buildDuelFromRow(row: ChallengeRow): ArenaDuel {
   }
   const creatorProgress = Number(row.creator_progress) || 0;
   const opponentProgress = Number(row.opponent_progress) || 0;
+  const resolvedAt = row.resolved_at ?? null;
   return {
     id: row.id ?? `${type}-${Date.now()}`,
     title,
@@ -151,6 +155,7 @@ function buildDuelFromRow(row: ChallengeRow): ArenaDuel {
     durationDays,
     startAt,
     endAt,
+    resolvedAt,
     you: { name: "Tu", progress: 0, total: goalValue },
     rival: {
       name: row.opponent_name || formatShortAddress(row.opponent_address),
@@ -357,6 +362,52 @@ export default function ArenaPage() {
   useEffect(() => {
     void fetchChallenges();
   }, [fetchChallenges]);
+
+  const visibleChallenges = useMemo(() => {
+    if (!challenges.length) return [];
+    const archiveAfterMs = ARENA_ARCHIVE_AFTER_DAYS * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    return challenges.filter((duel) => {
+      const status = duel.status ?? "active";
+      if (!["resolved", "draw", "claimed"].includes(status)) return true;
+      const anchor = duel.resolvedAt || duel.endAt;
+      if (!anchor) return true;
+      const timestamp = new Date(anchor).getTime();
+      if (Number.isNaN(timestamp)) return true;
+      return now - timestamp < archiveAfterMs;
+    });
+  }, [challenges]);
+
+  const arenaRecap = useMemo(() => {
+    if (!address) return null;
+    const addressLower = address.toLowerCase();
+    let wins = 0;
+    let losses = 0;
+    let draws = 0;
+    let total = 0;
+    for (const duel of challenges) {
+      const isCreator = duel.creatorAddress?.toLowerCase() === addressLower;
+      const isOpponent = duel.opponentAddress?.toLowerCase() === addressLower;
+      if (!isCreator && !isOpponent) continue;
+      const status = duel.status ?? "active";
+      if (status === "draw") {
+        draws += 1;
+        total += 1;
+        continue;
+      }
+      if (status === "resolved" || status === "claimed") {
+        const winner =
+          duel.winnerAddress?.toLowerCase() === addressLower;
+        if (winner) {
+          wins += 1;
+        } else {
+          losses += 1;
+        }
+        total += 1;
+      }
+    }
+    return { wins, losses, draws, total };
+  }, [address, challenges]);
 
   const resolveExpiredChallenge = useCallback(
     async (duel: ArenaDuel) => {
@@ -881,6 +932,27 @@ export default function ArenaPage() {
               Active Duels
             </span>
           </div>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-slate-900/40 px-4 py-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
+                Recap Arena
+              </p>
+              <p className="text-sm font-semibold text-slate-100">
+                {arenaRecap ? `${arenaRecap.total} sfide giocate` : "Collega il wallet per il recap"}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+              <span className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-1 text-emerald-200">
+                Vittorie {arenaRecap ? arenaRecap.wins : "—"}
+              </span>
+              <span className="rounded-full border border-rose-400/40 bg-rose-500/10 px-3 py-1 text-rose-200">
+                Sconfitte {arenaRecap ? arenaRecap.losses : "—"}
+              </span>
+              <span className="rounded-full border border-amber-400/40 bg-amber-500/10 px-3 py-1 text-amber-200">
+                Pareggi {arenaRecap ? arenaRecap.draws : "—"}
+              </span>
+            </div>
+          </div>
           <div className="mt-6 grid gap-5">
             {isChallengesLoading ? (
               <div className="rounded-3xl border border-white/10 bg-slate-900/40 p-6 text-sm text-slate-300">
@@ -890,12 +962,12 @@ export default function ArenaPage() {
               <div className="rounded-3xl border border-rose-400/40 bg-rose-500/10 p-6 text-sm text-rose-200">
                 {challengesError}
               </div>
-            ) : challenges.length === 0 ? (
+            ) : visibleChallenges.length === 0 ? (
               <div className="rounded-3xl border border-white/10 bg-slate-900/40 p-6 text-sm text-slate-300">
                 Nessuna sfida attiva al momento. Crea la prima per iniziare!
               </div>
             ) : (
-              challenges.map((duel) => {
+              visibleChallenges.map((duel) => {
                 const viewerIsCreator =
                   Boolean(address && duel.creatorAddress) &&
                   duel.creatorAddress?.toLowerCase() ===
@@ -916,7 +988,19 @@ export default function ArenaPage() {
                 const duelType = resolveDuelType(duel);
                 const gapValue = youProgressCapped - rivalProgressCapped;
                 const gapLabel = formatGapLabel(duelType, gapValue, duel.unit);
-                const status =
+                const showStravaLink = duelType === "Corsa" || duelType === "Nuoto";
+                const isCreator = viewerIsCreator;
+                const isOpponent =
+                  Boolean(address && duel.opponentAddress) &&
+                  duel.opponentAddress?.toLowerCase() ===
+                    (address?.toLowerCase() ?? "");
+                const isParticipant = isCreator || isOpponent;
+                const isWinner =
+                  Boolean(address && duel.winnerAddress) &&
+                  duel.winnerAddress?.toLowerCase() ===
+                    (address?.toLowerCase() ?? "");
+                const isDraw = duel.status === "draw";
+                const progressBadge =
                   youPct > rivalPct
                     ? {
                         label: "Stai Vincendo! 🏆",
@@ -931,8 +1015,35 @@ export default function ArenaPage() {
                           label: "Testa a testa",
                           tone: "border-slate-600/70 bg-slate-700/40 text-slate-200"
                         };
-                const showStravaLink = duelType === "Corsa" || duelType === "Nuoto";
-                const isCreator = viewerIsCreator;
+                const isResolved =
+                  duel.status === "resolved" ||
+                  duel.status === "claimed" ||
+                  isDraw;
+                const resultBadge = isResolved
+                  ? isDraw
+                    ? {
+                        label: "Pareggio 🤝",
+                        tone: "border-amber-400/60 bg-amber-500/15 text-amber-200"
+                      }
+                    : isWinner
+                      ? {
+                          label: "Complimenti! Hai vinto la sfida 🏆",
+                          tone:
+                            "border-emerald-400/70 bg-emerald-500/20 text-emerald-200"
+                        }
+                      : isParticipant
+                        ? {
+                            label: "Sfida persa",
+                            tone:
+                              "border-rose-400/60 bg-rose-500/15 text-rose-200"
+                          }
+                        : {
+                            label: "Sfida conclusa",
+                            tone:
+                              "border-slate-600/70 bg-slate-700/40 text-slate-200"
+                          }
+                  : null;
+                const badge = resultBadge ?? progressBadge;
                 const rivalName = isCreator
                   ? duel.rival.name
                   : formatShortAddress(duel.creatorAddress);
@@ -987,15 +1098,6 @@ export default function ArenaPage() {
                 const isResolving =
                   duel.status === "matched" && Boolean(isExpired);
                 const warningMessage = arenaWarnings[duel.id];
-                const isWinner =
-                  Boolean(address && duel.winnerAddress) &&
-                  duel.winnerAddress?.toLowerCase() ===
-                    (address?.toLowerCase() ?? "");
-                const isOpponent =
-                  Boolean(address && duel.opponentAddress) &&
-                  duel.opponentAddress?.toLowerCase() ===
-                    (address?.toLowerCase() ?? "");
-                const isDraw = duel.status === "draw";
                 const hasClaimed = isCreator
                   ? duel.creatorClaimed
                   : isOpponent
@@ -1017,14 +1119,15 @@ export default function ArenaPage() {
                 return (
                   <div
                     key={duel.id}
-                    className="rounded-3xl border border-white/10 bg-slate-900/50 p-6 shadow-2xl"
+                    className="relative overflow-hidden rounded-3xl border border-white/10 bg-slate-900/50 p-4 shadow-[0_20px_50px_rgba(15,23,42,0.6)] transition hover:-translate-y-0.5 hover:border-cyan-400/40 hover:shadow-[0_25px_60px_rgba(14,165,233,0.18)]"
                   >
+                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(14,165,233,0.12),transparent_55%)]" />
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
                         Sfida
                       </p>
-                      <h3 className="mt-1 text-lg font-semibold text-white">
+                      <h3 className="mt-1 text-base font-semibold text-white">
                         {duel.title}
                       </h3>
                     </div>
@@ -1041,12 +1144,12 @@ export default function ArenaPage() {
                     </div>
                   </div>
 
-                  <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_auto_1fr] lg:items-center">
-                    <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                  <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto_1fr] lg:items-center">
+                    <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-3">
                       <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
                         {duel.you.name}
                       </p>
-                      <p className="mt-2 text-lg font-semibold text-cyan-200">
+                      <p className="mt-1 text-base font-semibold text-cyan-200">
                         {youProgressCapped}/{totalGoal}
                       </p>
                       <p className="text-xs text-slate-400">Progresso</p>
@@ -1066,22 +1169,22 @@ export default function ArenaPage() {
                       VS
                     </div>
 
-                    <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                    <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-3">
                       <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
                         {rivalName}
                       </p>
-                      <p className="mt-2 text-lg font-semibold text-red-200">
+                      <p className="mt-1 text-base font-semibold text-red-200">
                         {rivalProgressCapped}/{totalGoal}
                       </p>
                       <p className="text-xs text-slate-400">Progresso</p>
                     </div>
                   </div>
 
-                  <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                     <span
-                      className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold ${status.tone}`}
+                      className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold ${badge.tone}`}
                     >
-                      {status.label}
+                      {badge.label}
                     </span>
                     <span className="text-xs font-semibold text-slate-200">
                       Distacco {gapLabel}
@@ -1089,7 +1192,7 @@ export default function ArenaPage() {
                   </div>
 
                   <div className="mt-3 rounded-full border border-white/10 bg-slate-950/80 p-2">
-                    <div className="relative flex h-3 overflow-hidden rounded-full bg-slate-800/80">
+                    <div className="relative flex h-2.5 overflow-hidden rounded-full bg-slate-800/80">
                       <div
                         className="h-full bg-gradient-to-r from-cyan-400 to-cyan-200"
                         style={{ width: `${youPct}%` }}
