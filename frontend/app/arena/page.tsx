@@ -1052,7 +1052,7 @@ export default function ArenaPage() {
                       <p className="text-xs text-slate-400">Progresso</p>
                       {showStravaLink ? (
                         <a
-                          href="https://www.strava.com/record"
+                          href="https://www.strava.com/upload/activity"
                           target="_blank"
                           rel="noreferrer"
                           className="mt-3 inline-flex text-xs font-semibold text-cyan-200 transition hover:text-cyan-100"
