@@ -1750,7 +1750,8 @@ function HomeContent() {
 
                   <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
                     <MissionCard
-                      icon={<Activity className="h-6 w-6 text-purple-500 sm:h-8 sm:w-8" />}
+                      icon={<Activity className="h-6 w-6 sm:h-8 sm:w-8" />}
+                      accent="text-purple-500"
                       title="Corsa"
                       description="Run su Strava sopra 5 km."
                       reward="10"
@@ -1765,13 +1766,13 @@ function HomeContent() {
                       isComplete={weeklyCounts.run >= WEEKLY_GOALS.run}
                       isActive={activeFilter === "run"}
                       className="w-full"
-                      sparkline={weeklySparkline.run}
                       onClick={() =>
                         setActiveFilter((prev) => (prev === "run" ? null : "run"))
                       }
                     />
                     <MissionCard
-                      icon={<Droplet className="h-6 w-6 text-cyan-400 sm:h-8 sm:w-8" />}
+                      icon={<Droplet className="h-6 w-6 sm:h-8 sm:w-8" />}
+                      accent="text-cyan-400"
                       title="Nuoto"
                       description="Swim su Strava sopra 1 km."
                       reward="20"
@@ -1786,13 +1787,13 @@ function HomeContent() {
                       isComplete={weeklyCounts.swim >= WEEKLY_GOALS.swim}
                       isActive={activeFilter === "swim"}
                       className="w-full"
-                      sparkline={weeklySparkline.swim}
                       onClick={() =>
                         setActiveFilter((prev) => (prev === "swim" ? null : "swim"))
                       }
                     />
                     <MissionCard
-                      icon={<Dumbbell className="h-6 w-6 text-purple-400 sm:h-8 sm:w-8" />}
+                      icon={<Dumbbell className="h-6 w-6 sm:h-8 sm:w-8" />}
+                      accent="text-purple-400"
                       title="Iron Protocol"
                       description="Sessione palestra su Strava."
                       reward="10"
@@ -1807,13 +1808,13 @@ function HomeContent() {
                       isComplete={weeklyCounts.iron >= WEEKLY_GOALS.iron}
                       isActive={activeFilter === "iron"}
                       className="w-full"
-                      sparkline={weeklySparkline.iron}
                       onClick={() =>
                         setActiveFilter((prev) => (prev === "iron" ? null : "iron"))
                       }
                     />
                     <MissionCard
-                      icon={<Leaf className="h-6 w-6 text-emerald-400 sm:h-8 sm:w-8" />}
+                      icon={<Leaf className="h-6 w-6 sm:h-8 sm:w-8" />}
+                      accent="text-emerald-400"
                       title="Mindfulness"
                       description="Yoga o recupero guidato."
                       reward="10"
@@ -1828,7 +1829,6 @@ function HomeContent() {
                       isComplete={weeklyCounts.mindfulness >= WEEKLY_GOALS.mindfulness}
                       isActive={activeFilter === "mindfulness"}
                       className="w-full"
-                      sparkline={weeklySparkline.mindfulness}
                       onClick={() =>
                         setActiveFilter((prev) =>
                           prev === "mindfulness" ? null : "mindfulness"
@@ -2107,6 +2107,7 @@ export default function Home() {
 
 function MissionCard({
   icon,
+  accent,
   title,
   description,
   reward,
@@ -2117,10 +2118,10 @@ function MissionCard({
   isComplete,
   isActive,
   onClick,
-  sparkline,
   className
 }: {
   icon: ReactNode;
+  accent: string;
   title: string;
   description: string;
   reward: string;
@@ -2131,14 +2132,18 @@ function MissionCard({
   isComplete?: boolean;
   isActive?: boolean;
   onClick?: () => void;
-  sparkline?: number[];
   className?: string;
 }) {
   const safeCurrent = Math.max(0, current ?? 0);
   const safeTarget = Math.max(1, target ?? 1);
   const normalizedProgress = Math.min(safeCurrent, safeTarget);
   const isCompleted = Boolean(isComplete);
-  const sparklineMax = sparkline ? Math.max(1, ...sparkline) : 1;
+  const progressPct =
+    safeTarget > 0 ? Math.min(100, Math.round((safeCurrent / safeTarget) * 100)) : 0;
+  const iconTone = isCompleted ? "text-emerald-300" : accent;
+  const statusTone = isCompleted
+    ? "border-emerald-400/40 text-emerald-200"
+    : "border-white/10 text-white";
 
   return (
     <button
@@ -2146,7 +2151,7 @@ function MissionCard({
       onClick={onClick}
       className={`group relative w-full overflow-hidden rounded-2xl border bg-slate-900/40 backdrop-blur-xl border-white/10 shadow-2xl p-3 sm:p-4 lg:p-3 text-left transition-all duration-500 ${
         isCompleted
-          ? "border-cyan-400/70 bg-cyan-500/10 shadow-[0_0_25px_rgba(34,211,238,0.35)]"
+          ? "border-emerald-500 bg-emerald-500/10 shadow-[0_0_25px_rgba(34,197,94,0.35)]"
           : isActive
             ? "border-cyan-400/50"
             : "border-white/10"
@@ -2159,26 +2164,26 @@ function MissionCard({
       <span className="pointer-events-none absolute -top-8 right-6 h-20 w-20 rounded-full bg-cyan-500/10 blur-2xl opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-2 sm:gap-3">
-          <div className="mt-1 transform group-hover:scale-105 transition-transform">{icon}</div>
+          <div
+            className={`mt-1 transform group-hover:scale-105 transition-transform ${iconTone}`}
+          >
+            {icon}
+          </div>
           <div>
             <h3 className="text-sm font-semibold text-white sm:text-base">{title}</h3>
-            {sparkline ? (
-              <div className="mt-1 flex items-end gap-1">
-                {sparkline.map((value, index) => {
-                  const height = Math.max(2, Math.round((value / sparklineMax) * 10));
-                  return (
-                    <span
-                      key={`${title}-spark-${index}`}
-                      className="w-1 rounded-full bg-cyan-400/80 shadow-[0_0_6px_rgba(34,211,238,0.5)]"
-                      style={{ height }}
-                    />
-                  );
-                })}
-              </div>
-            ) : null}
+            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-800/80">
+              <div
+                className={`h-full rounded-full ${
+                  isCompleted ? "bg-emerald-400" : "bg-cyan-400"
+                }`}
+                style={{ width: `${progressPct}%` }}
+              />
+            </div>
             <p className="mt-1 text-[11px] text-slate-400 sm:text-xs">{description}</p>
             {status ? (
-              <span className="mt-1 inline-flex rounded-full border border-white/10 px-2 py-0.5 text-[9px] font-semibold text-slate-300 font-mono sm:text-[10px]">
+              <span
+                className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[9px] font-semibold font-mono sm:text-[10px] ${statusTone}`}
+              >
                 {status}
               </span>
             ) : null}
