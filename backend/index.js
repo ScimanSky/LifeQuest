@@ -38,6 +38,7 @@ const ARENA_TEST_MODE =
   process.env.ARENA_TEST_MODE === "1" ||
   !process.env.ARENA_TEST_MODE;
 const ARENA_PROGRESS_CACHE_MS = 60000;
+const ARENA_START_GRACE_MINUTES = Number(process.env.ARENA_START_GRACE_MINUTES) || 720;
 const IRON_PROTOCOL_TYPES = new Set([
   "WeightTraining",
   "Workout",
@@ -518,13 +519,15 @@ function filterActivitiesByRange(activities, startAt, endAt) {
   const start = new Date(startAt).getTime();
   const end = new Date(endAt).getTime();
   if (Number.isNaN(start) || Number.isNaN(end)) return [];
+  const graceMs = Math.max(0, ARENA_START_GRACE_MINUTES) * 60 * 1000;
+  const startWithGrace = Math.max(0, start - graceMs);
   return (activities || []).filter((activity) => {
     if (!activity) return false;
     const dateValue = getActivityDate(activity);
     if (!dateValue) return false;
     const timestamp = new Date(dateValue).getTime();
     if (Number.isNaN(timestamp)) return false;
-    return timestamp >= start && timestamp <= end;
+    return timestamp >= startWithGrace && timestamp <= end;
   });
 }
 
@@ -1008,11 +1011,13 @@ async function resolveArenaChallenge(challenge) {
   if (!opponentToken?.refresh_token && opponentActivities.length === 0) {
     missingWallets.push(opponent);
   }
-  if (missingWallets.length > 0 && !ARENA_TEST_MODE) {
-    return { status: "missing_tokens", missing_wallets: missingWallets };
-  }
-  if (!creatorToken?.refresh_token && !opponentToken?.refresh_token) {
-    return { status: "missing_tokens", missing_wallets: missingWallets };
+  if (!ARENA_TEST_MODE) {
+    if (missingWallets.length > 0) {
+      return { status: "missing_tokens", missing_wallets: missingWallets };
+    }
+    if (!creatorToken?.refresh_token && !opponentToken?.refresh_token) {
+      return { status: "missing_tokens", missing_wallets: missingWallets };
+    }
   }
 
   let status = "resolved";
@@ -1123,11 +1128,13 @@ async function updateArenaProgress(challenge) {
   if (!opponentToken?.refresh_token && opponentActivities.length === 0) {
     missingWallets.push(opponent);
   }
-  if (missingWallets.length > 0 && !ARENA_TEST_MODE) {
-    return { status: "missing_tokens", missing_wallets: missingWallets };
-  }
-  if (!creatorToken?.refresh_token && !opponentToken?.refresh_token) {
-    return { status: "missing_tokens", missing_wallets: missingWallets };
+  if (!ARENA_TEST_MODE) {
+    if (missingWallets.length > 0) {
+      return { status: "missing_tokens", missing_wallets: missingWallets };
+    }
+    if (!creatorToken?.refresh_token && !opponentToken?.refresh_token) {
+      return { status: "missing_tokens", missing_wallets: missingWallets };
+    }
   }
 
   let status = missingWallets.length > 0 ? "partial" : "updated";
