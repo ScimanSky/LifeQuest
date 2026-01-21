@@ -225,7 +225,8 @@ function buildMissingTokenMessage(
 }
 
 function buildRateLimitMessage(retryAfter?: number) {
-  const seconds = Number.isFinite(retryAfter) ? Math.max(10, retryAfter) : 60;
+  const safeRetry = Number.isFinite(retryAfter) ? retryAfter : 60;
+  const seconds = Math.max(10, safeRetry);
   return `Limite Strava raggiunto. Riprova tra ${seconds}s.`;
 }
 
