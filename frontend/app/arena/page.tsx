@@ -8,21 +8,12 @@ import {
   Swords,
   Timer,
   Trophy,
-  UserPlus,
   X
 } from "lucide-react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useAccount, usePublicClient, useReadContract, useWriteContract } from "wagmi";
 import { formatEther, parseAbi, parseEther, type Address } from "viem";
 import { supabase } from "../../utils/supabase";
-
-const rivals = [
-  { id: "neo", name: "Neo", level: 7 },
-  { id: "mira", name: "Mira", level: 9 },
-  { id: "xen", name: "Xen", level: 5 },
-  { id: "vex", name: "Vex", level: 11 },
-  { id: "sable", name: "Sable", level: 6 }
-];
 
 const CHALLENGE_DURATION_DAYS = 7;
 const CHALLENGE_DURATION_OPTIONS = ["1", "2", "3", "4", "5", "6", "7"];
@@ -894,39 +885,6 @@ export default function ArenaPage() {
 
         <section className="mt-12">
           <div className="flex items-center justify-between gap-4">
-            <h2 className="text-xl font-semibold text-white">Rivali</h2>
-            <span className="text-xs uppercase tracking-[0.3em] text-slate-400">
-              Amici
-            </span>
-          </div>
-          <div className="mt-5 flex items-center gap-4 overflow-x-auto pb-2">
-            {rivals.map((rival) => (
-              <div
-                key={rival.id}
-                className="flex min-w-[110px] flex-col items-center gap-3 rounded-2xl border border-white/10 bg-slate-900/50 px-4 py-5 text-center shadow-lg"
-              >
-                <div className="relative flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-red-500/50 to-purple-500/40 text-lg font-bold text-white shadow-[0_0_18px_rgba(239,68,68,0.5)]">
-                  {rival.name.slice(0, 2).toUpperCase()}
-                  <span className="absolute inset-0 rounded-full ring-2 ring-red-400/40" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-white">{rival.name}</p>
-                  <p className="text-xs text-slate-400">Lv. {rival.level}</p>
-                </div>
-              </div>
-            ))}
-            <button
-              type="button"
-              className="flex min-w-[110px] flex-col items-center gap-3 rounded-2xl border border-dashed border-cyan-400/50 bg-slate-900/30 px-4 py-5 text-center text-cyan-200 transition hover:border-cyan-300 hover:text-cyan-100"
-            >
-              <UserPlus className="h-6 w-6" />
-              <span className="text-xs font-semibold">Aggiungi</span>
-            </button>
-          </div>
-        </section>
-
-        <section className="mt-12">
-          <div className="flex items-center justify-between gap-4">
             <h2 className="text-xl font-semibold text-white">Sfide Attive</h2>
             <span className="text-xs uppercase tracking-[0.3em] text-slate-400">
               Active Duels
@@ -1119,7 +1077,7 @@ export default function ArenaPage() {
                 return (
                   <div
                     key={duel.id}
-                    className="relative overflow-hidden rounded-3xl border border-white/10 bg-slate-900/50 p-4 shadow-[0_20px_50px_rgba(15,23,42,0.6)] transition hover:-translate-y-0.5 hover:border-cyan-400/40 hover:shadow-[0_25px_60px_rgba(14,165,233,0.18)]"
+                    className="relative mx-auto w-full max-w-4xl overflow-hidden rounded-3xl border border-white/10 bg-slate-900/50 p-3 shadow-[0_20px_50px_rgba(15,23,42,0.6)] transition hover:-translate-y-0.5 hover:border-cyan-400/40 hover:shadow-[0_25px_60px_rgba(14,165,233,0.18)]"
                   >
                   <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(14,165,233,0.12),transparent_55%)]" />
                   <div className="flex flex-wrap items-center justify-between gap-3">
