@@ -1498,15 +1498,15 @@ function HomeContent() {
                     {unlocked ? (
                       <span className="pointer-events-none absolute -top-8 -right-8 h-20 w-20 rounded-full bg-amber-400/20 blur-2xl" />
                     ) : null}
-                    <div className="mx-auto flex aspect-square w-24 items-center justify-center rounded-2xl bg-slate-950/70 ring-1 ring-white/5 p-1 sm:w-28">
-                      <img
-                        src={badge.image}
-                        alt={badge.name}
-                        className={`h-full w-full object-contain scale-110 ${
-                          unlocked
-                            ? `opacity-100 ${badge.glow} group-hover:shadow-[0_0_18px_rgba(251,146,60,0.6)]`
-                            : "opacity-40 grayscale"
-                        }`}
+                  <div className="mx-auto flex aspect-square w-24 items-center justify-center overflow-hidden rounded-2xl bg-slate-950/70 ring-1 ring-white/5 p-1 sm:w-28">
+                    <img
+                      src={badge.image}
+                      alt={badge.name}
+                      className={`h-full w-full object-contain scale-125 ${
+                        unlocked
+                          ? `opacity-100 ${badge.glow} group-hover:shadow-[0_0_18px_rgba(251,146,60,0.6)]`
+                          : "opacity-40 grayscale"
+                      }`}
                         loading="lazy"
                       />
                     </div>
@@ -1542,11 +1542,11 @@ function HomeContent() {
                   {unlocked ? (
                     <span className="pointer-events-none absolute -top-8 -right-8 h-20 w-20 rounded-full bg-amber-400/20 blur-2xl" />
                   ) : null}
-                  <div className="mx-auto flex aspect-square w-24 items-center justify-center rounded-2xl bg-slate-950/70 ring-1 ring-white/5 p-1 sm:w-28 lg:w-32">
+                  <div className="mx-auto flex aspect-square w-24 items-center justify-center overflow-hidden rounded-2xl bg-slate-950/70 ring-1 ring-white/5 p-1 sm:w-28 lg:w-32">
                     <img
                       src={badge.image}
                       alt={badge.name}
-                      className={`h-full w-full object-contain scale-110 ${
+                      className={`h-full w-full object-contain scale-125 ${
                         unlocked
                           ? `opacity-100 ${badge.glow} group-hover:shadow-[0_0_18px_rgba(251,146,60,0.6)]`
                           : "opacity-40 grayscale"
@@ -1571,7 +1571,7 @@ function HomeContent() {
             {isWalletConnected ? (
               <>
                 <div
-                  className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-4 transition-all duration-500 flex flex-col flex-1 h-full ${
+                  className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-4 transition-all duration-500 flex flex-col flex-1 h-full lg:min-h-[520px] ${
                     showLevelUpGlow
                       ? "ring-2 ring-amber-400/60 shadow-[0_0_30px_rgba(251,191,36,0.4)]"
                       : ""
@@ -1629,19 +1629,23 @@ function HomeContent() {
                     </button>
                   ) : null}
 
-                  <div className="mt-3 flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/60 p-3 transition-all duration-500">
-                    <div
-                      className={`flex h-10 w-10 items-center justify-center rounded-xl ${
-                        ignitionUnlocked ? "bg-cyan-500/20 text-cyan-200" : "bg-slate-800/60 text-slate-500"
-                      }`}
-                    >
-                      {ignitionUnlocked ? <Zap className="h-5 w-5" /> : <Lock className="h-5 w-5" />}
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-white">The Ignition</p>
-                      <p className="text-xs text-slate-400">
-                        {ignitionUnlocked ? "Sbloccato" : "Bloccato"}
-                      </p>
+                  <div className="mt-auto">
+                    <div className="mt-3 flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/60 p-3 transition-all duration-500">
+                      <div
+                        className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+                          ignitionUnlocked
+                            ? "bg-cyan-500/20 text-cyan-200"
+                            : "bg-slate-800/60 text-slate-500"
+                        }`}
+                      >
+                        {ignitionUnlocked ? <Zap className="h-5 w-5" /> : <Lock className="h-5 w-5" />}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-white">The Ignition</p>
+                        <p className="text-xs text-slate-400">
+                          {ignitionUnlocked ? "Sbloccato" : "Bloccato"}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1695,7 +1699,7 @@ function HomeContent() {
 
           <section className="col-span-12 lg:col-span-5 flex flex-col gap-3 lg:min-h-0 lg:h-full">
             <div
-              className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-3 sm:p-4 lg:p-3 flex flex-col min-h-0 transition-all duration-500 ${
+              className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-3 sm:p-4 lg:p-3 flex flex-col flex-1 min-h-0 transition-all duration-500 h-full lg:min-h-[520px] ${
                 isDisconnected ? "grayscale-[0.3] saturate-75" : ""
               }`}
             >
@@ -1883,7 +1887,7 @@ function HomeContent() {
 
           <section className="col-span-12 lg:col-span-4 flex flex-col gap-3 lg:min-h-0 lg:h-full">
             <div
-              className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-4 flex flex-col flex-1 h-full transition-all duration-500 lg:overflow-hidden ${
+              className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-4 flex flex-col flex-1 h-full transition-all duration-500 lg:overflow-hidden lg:min-h-[520px] ${
                 isDisconnected ? "grayscale-[0.3] saturate-75" : ""
               } ${isActivitiesExpanded ? "" : "lg:h-full"}`}
             >
