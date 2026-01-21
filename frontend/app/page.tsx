@@ -1464,7 +1464,7 @@ function HomeContent() {
           </div>
         </header>
 
-        <div className="relative w-full rounded-3xl border border-white/10 bg-slate-900/40 p-2 shadow-2xl backdrop-blur-xl sm:p-3">
+        <div className="relative w-full rounded-3xl border border-white/10 bg-slate-900/40 p-2 shadow-2xl backdrop-blur-xl sm:p-3 lg:-mx-1">
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.12),transparent_55%)]" />
           <div className="pointer-events-none absolute -top-24 right-10 h-40 w-40 rounded-full bg-amber-400/10 blur-3xl" />
           <div className="flex items-center justify-between">
@@ -1571,7 +1571,7 @@ function HomeContent() {
             {isWalletConnected ? (
               <>
                 <div
-                  className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-4 transition-all duration-500 flex flex-col flex-1 h-full ${
+                  className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-4 transition-all duration-500 flex flex-col flex-1 h-full lg:min-h-[480px] ${
                     showLevelUpGlow
                       ? "ring-2 ring-amber-400/60 shadow-[0_0_30px_rgba(251,191,36,0.4)]"
                       : ""
@@ -1629,7 +1629,7 @@ function HomeContent() {
                     </button>
                   ) : null}
 
-                  <div className="mt-4 flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/60 p-3 transition-all duration-500 mt-auto">
+                  <div className="mt-3 flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/60 p-3 transition-all duration-500">
                     <div
                       className={`flex h-10 w-10 items-center justify-center rounded-xl ${
                         ignitionUnlocked ? "bg-cyan-500/20 text-cyan-200" : "bg-slate-800/60 text-slate-500"
@@ -1695,7 +1695,7 @@ function HomeContent() {
 
           <section className="col-span-12 lg:col-span-5 flex flex-col gap-3 lg:min-h-0 lg:h-full">
             <div
-              className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-3 sm:p-4 lg:p-3 flex flex-col min-h-0 transition-all duration-500 ${
+              className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-3 sm:p-4 lg:p-3 flex flex-col min-h-0 transition-all duration-500 lg:min-h-[480px] ${
                 isDisconnected ? "grayscale-[0.3] saturate-75" : ""
               }`}
             >
@@ -1883,7 +1883,7 @@ function HomeContent() {
 
           <section className="col-span-12 lg:col-span-4 flex flex-col gap-3 lg:min-h-0 lg:h-full">
             <div
-              className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-4 flex flex-col flex-1 h-full lg:min-h-0 transition-all duration-500 ${
+              className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-4 flex flex-col flex-1 h-full lg:min-h-[480px] transition-all duration-500 ${
                 isDisconnected ? "grayscale-[0.3] saturate-75" : ""
               } ${isActivitiesExpanded ? "" : "lg:h-full"}`}
             >
