@@ -924,7 +924,7 @@ function HomeContent() {
 
   useEffect(() => {
     if (!isWalletMenuOpen) return;
-    const handleClick = (event: MouseEvent) => {
+    const handlePointer = (event: PointerEvent) => {
       if (!walletMenuRef.current) return;
       if (walletMenuRef.current.contains(event.target as Node)) return;
       setIsWalletMenuOpen(false);
@@ -934,10 +934,10 @@ function HomeContent() {
         setIsWalletMenuOpen(false);
       }
     };
-    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("pointerdown", handlePointer);
     document.addEventListener("keydown", handleEscape);
     return () => {
-      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("pointerdown", handlePointer);
       document.removeEventListener("keydown", handleEscape);
     };
   }, [isWalletMenuOpen]);
@@ -1290,7 +1290,10 @@ function HomeContent() {
             >
               <button
                 type="button"
-                onClick={() => setIsWalletMenuOpen((prev) => !prev)}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  setIsWalletMenuOpen((prev) => !prev);
+                }}
                 className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-slate-900/60 px-4 py-2 text-xs font-semibold text-slate-100 transition hover:border-white/20"
                 aria-label="Apri menu wallet"
               >
