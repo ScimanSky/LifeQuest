@@ -20,6 +20,7 @@ import {
   Dumbbell,
   Leaf,
   Zap,
+  Wallet,
   Lock,
   CheckCircle,
   UserRound,
@@ -238,6 +239,7 @@ function HomeContent() {
   >(null);
   const [showAllActivities, setShowAllActivities] = useState(false);
   const [isWalletMenuOpen, setIsWalletMenuOpen] = useState(false);
+  const walletMenuRef = useRef<HTMLDivElement | null>(null);
   const [currentLevel, setCurrentLevel] = useState(1);
   const [showLevelUpGlow, setShowLevelUpGlow] = useState(false);
   const [userStats, setUserStats] = useState<UserStats | null>(null);
@@ -921,6 +923,26 @@ function HomeContent() {
   }, [isWalletConnected]);
 
   useEffect(() => {
+    if (!isWalletMenuOpen) return;
+    const handleClick = (event: MouseEvent) => {
+      if (!walletMenuRef.current) return;
+      if (walletMenuRef.current.contains(event.target as Node)) return;
+      setIsWalletMenuOpen(false);
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsWalletMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [isWalletMenuOpen]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     const handler = (event: StorageEvent) => {
       if (event.key !== BALANCE_REFRESH_KEY) return;
@@ -1258,6 +1280,7 @@ function HomeContent() {
               Guida LifeQuest
             </Link>
             <div
+              ref={walletMenuRef}
               className="relative"
               onMouseEnter={() => setIsWalletMenuOpen(true)}
               onMouseLeave={() => setIsWalletMenuOpen(false)}
@@ -1265,9 +1288,10 @@ function HomeContent() {
               <button
                 type="button"
                 onClick={() => setIsWalletMenuOpen((prev) => !prev)}
-                className="inline-flex items-center rounded-full border border-white/10 bg-slate-900/60 px-4 py-2 text-xs font-semibold text-slate-100 transition hover:border-white/20"
+                className="inline-flex items-center rounded-full border border-white/10 bg-slate-900/60 px-3 py-2 text-xs font-semibold text-slate-100 transition hover:border-white/20"
+                aria-label="Apri menu wallet"
               >
-                Wallet
+                <Wallet className="h-4 w-4" />
               </button>
               {isWalletMenuOpen ? (
                 <div className="absolute right-0 z-30 mt-2 w-72 rounded-2xl border border-white/10 bg-slate-900/95 p-4 shadow-2xl backdrop-blur-xl">
@@ -1367,16 +1391,18 @@ function HomeContent() {
                 </div>
               ) : null}
             </div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-[11px] font-semibold text-cyan-100">
-              <span className="uppercase tracking-[0.2em] text-[10px] text-cyan-200 hidden sm:inline">
-                Saldo
-              </span>
-              <span className="font-mono">{lifeBalanceFormatted} LIFE</span>
-            </div>
+            {isWalletConnected ? (
+              <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-[11px] font-semibold text-cyan-100">
+                <span className="uppercase tracking-[0.2em] text-[10px] text-cyan-200 hidden sm:inline">
+                  Saldo
+                </span>
+                <span className="font-mono">{lifeBalanceFormatted} LIFE</span>
+              </div>
+            ) : null}
           </div>
         </header>
 
-        <div className="relative rounded-3xl border border-white/10 bg-slate-900/40 p-3 shadow-2xl backdrop-blur-xl sm:p-4">
+        <div className="relative w-full rounded-3xl border border-white/10 bg-slate-900/40 p-3 shadow-2xl backdrop-blur-xl sm:p-4 lg:max-w-[980px]">
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.12),transparent_55%)]" />
           <div className="pointer-events-none absolute -top-24 right-10 h-40 w-40 rounded-full bg-amber-400/10 blur-3xl" />
           <div className="flex items-center justify-between">
@@ -1393,7 +1419,7 @@ function HomeContent() {
               return (
                 <div
                   key={badge.id}
-                  className={`group relative min-w-[180px] snap-start overflow-hidden rounded-2xl border border-white/10 bg-slate-900/60 p-3 text-center transition-all duration-500 sm:min-w-[200px] sm:p-4 ${
+                  className={`group relative min-w-[150px] snap-start overflow-hidden rounded-2xl border border-white/10 bg-slate-900/60 p-2.5 text-center transition-all duration-500 sm:min-w-[170px] sm:p-3 ${
                     unlocked
                       ? "hover:-translate-y-0.5 hover:shadow-[0_0_28px_rgba(251,146,60,0.45)]"
                       : "opacity-90"
@@ -1406,11 +1432,11 @@ function HomeContent() {
                   {unlocked ? (
                     <span className="pointer-events-none absolute -top-8 -right-8 h-20 w-20 rounded-full bg-amber-400/20 blur-2xl" />
                   ) : null}
-                  <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-slate-950/70 ring-1 ring-white/5 sm:h-24 sm:w-24">
+                  <div className="mx-auto flex aspect-square w-full items-center justify-center rounded-2xl bg-slate-950/70 ring-1 ring-white/5 p-3">
                     <img
                       src={badge.image}
                       alt={badge.name}
-                      className={`h-16 w-16 sm:h-20 sm:w-20 ${
+                      className={`h-full w-full object-contain ${
                         unlocked
                           ? `opacity-100 ${badge.glow} group-hover:shadow-[0_0_18px_rgba(251,146,60,0.6)]`
                           : "opacity-40 grayscale"
@@ -1418,17 +1444,12 @@ function HomeContent() {
                       loading="lazy"
                     />
                   </div>
-                  <p className="mt-3 text-sm font-semibold text-white sm:text-base">
-                    {badge.name}
-                  </p>
-                  <p className="mt-1 text-[10px] text-slate-400 sm:text-[11px]">
-                    {unlocked ? "Sbloccato" : badge.requirement}
-                  </p>
-                  {unlocked ? (
-                    <span className="mt-2 inline-flex items-center justify-center rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-[9px] font-semibold text-amber-200 sm:text-[10px]">
-                      Trophy
-                    </span>
-                  ) : null}
+                  <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-xl border border-white/10 bg-slate-950/90 px-2 py-1 text-center text-[10px] text-slate-200 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                    <p className="font-semibold">{badge.name}</p>
+                    <p className="mt-0.5 text-[9px] text-slate-400">
+                      {unlocked ? "Sbloccato" : badge.requirement}
+                    </p>
+                  </div>
                 </div>
               );
             })}
