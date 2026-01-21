@@ -758,6 +758,46 @@ async function resolveArenaChallenge(challenge) {
   };
 }
 
+async function updateArenaProgress(challenge) {
+  if (!challenge?.id) {
+    throw new Error("Id sfida mancante");
+  }
+  const { startAt, endAt } = getChallengeWindow(challenge);
+  if (!startAt) {
+    throw new Error("Inizio sfida mancante");
+  }
+  const nowIso = new Date().toISOString();
+  const rangeEnd = endAt && new Date(endAt).getTime() < Date.now() ? endAt : nowIso;
+
+  const creator = normalizeWallet(challenge.creator_address);
+  const opponent = normalizeWallet(challenge.opponent_address);
+  if (!creator || !opponent) {
+    throw new Error("Wallet sfida non validi");
+  }
+
+  const [creatorToken, opponentToken] = await Promise.all([
+    getStravaAccessToken(creator),
+    getStravaAccessToken(opponent)
+  ]);
+
+  const [creatorActivities, opponentActivities] = await Promise.all([
+    fetchActivitiesInRange(creatorToken, startAt, rangeEnd),
+    fetchActivitiesInRange(opponentToken, startAt, rangeEnd)
+  ]);
+
+  const creatorProgress = computeArenaProgress(creatorActivities, challenge.type);
+  const opponentProgress = computeArenaProgress(opponentActivities, challenge.type);
+
+  await updateChallengeById(challenge.id, {
+    creator_progress: creatorProgress,
+    opponent_progress: opponentProgress,
+    start_at: startAt,
+    end_at: endAt || rangeEnd
+  });
+
+  return { creator_progress: creatorProgress, opponent_progress: opponentProgress };
+}
+
 async function mintArenaReward(amount, recipient) {
   const normalized = Number(amount);
   if (!Number.isFinite(normalized) || normalized <= 0) {
@@ -1052,6 +1092,28 @@ app.post("/arena/resolve", async (req, res) => {
     return res.json(result);
   } catch (err) {
     console.error("Arena resolve error:", err);
+    const message = err?.message || "Errore interno";
+    return res.status(500).json({ error: message });
+  }
+});
+
+app.post("/arena/progress", async (req, res) => {
+  try {
+    const challengeId = req.body?.challengeId;
+    if (!challengeId) {
+      return res.status(400).json({ error: "ChallengeId mancante" });
+    }
+    const challenge = await fetchChallengeById(challengeId);
+    if (!challenge) {
+      return res.status(404).json({ error: "Sfida non trovata" });
+    }
+    if (challenge.status !== "matched") {
+      return res.json({ status: challenge.status });
+    }
+    const progress = await updateArenaProgress(challenge);
+    return res.json({ status: "updated", ...progress });
+  } catch (err) {
+    console.error("Arena progress error:", err);
     const message = err?.message || "Errore interno";
     return res.status(500).json({ error: message });
   }

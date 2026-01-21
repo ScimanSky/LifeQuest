@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -110,6 +110,11 @@ function resolveDuelType(duel: { type?: string | null; title: string }) {
   return "Corsa";
 }
 
+function formatShortAddress(address?: string | null) {
+  if (!address) return "Avversario";
+  return `${address.slice(0, 4)}...${address.slice(-4)}`;
+}
+
 function buildDuelFromRow(row: ChallengeRow): ArenaDuel {
   const type = row.type ?? "Corsa";
   const goalValue = Number(row.goal) || 1;
@@ -146,7 +151,11 @@ function buildDuelFromRow(row: ChallengeRow): ArenaDuel {
     startAt,
     endAt,
     you: { name: "Tu", progress: 0, total: goalValue },
-    rival: { name: row.opponent_name ?? "Avversario", progress: 0, total: goalValue },
+    rival: {
+      name: row.opponent_name || formatShortAddress(row.opponent_address),
+      progress: 0,
+      total: goalValue
+    },
     timeLeft: formatTimeLeft(endAt, durationDays),
     stake: `${stakeValue} LIFE`,
     stakeValue
@@ -214,7 +223,6 @@ export default function ArenaPage() {
   const [challengeGoal, setChallengeGoal] = useState("");
   const [challengeStake, setChallengeStake] = useState("");
   const [challengeDuration, setChallengeDuration] = useState("7");
-  const [challengeRival, setChallengeRival] = useState(rivals[0]?.name ?? "");
   const [challenges, setChallenges] = useState<ArenaDuel[]>([]);
   const [isChallengesLoading, setIsChallengesLoading] = useState(true);
   const [challengesError, setChallengesError] = useState<string | null>(null);
@@ -228,6 +236,7 @@ export default function ArenaPage() {
   const [claimingChallengeId, setClaimingChallengeId] = useState<string | null>(null);
   const [claimStage, setClaimStage] = useState<"claiming" | null>(null);
   const [claimError, setClaimError] = useState<string | null>(null);
+  const lastProgressSyncRef = useRef(0);
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
@@ -290,6 +299,21 @@ export default function ArenaPage() {
     []
   );
 
+  const updateChallengeProgress = useCallback(async (duel: ArenaDuel) => {
+    if (!BACKEND_BASE_URL) return;
+    if (duel.status !== "matched") return;
+    if (!duel.startAt) return;
+    try {
+      await fetch(`${BACKEND_BASE_URL}/arena/progress`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ challengeId: duel.id })
+      });
+    } catch (error) {
+      console.error("Errore aggiornamento progressi:", error);
+    }
+  }, []);
+
   useEffect(() => {
     if (!challenges.length) return;
     const expired = challenges.filter(
@@ -303,6 +327,18 @@ export default function ArenaPage() {
   }, [challenges, fetchChallenges, resolveExpiredChallenge]);
 
   useEffect(() => {
+    if (!challenges.length) return;
+    const active = challenges.filter(
+      (duel) => duel.status === "matched" && duel.startAt
+    );
+    if (!active.length) return;
+    const now = Date.now();
+    if (now - lastProgressSyncRef.current < ARENA_POLL_INTERVAL_MS) return;
+    lastProgressSyncRef.current = now;
+    void Promise.all(active.map(updateChallengeProgress)).then(fetchChallenges);
+  }, [challenges, fetchChallenges, updateChallengeProgress]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     if (!BACKEND_BASE_URL) return;
     if (!challenges.length) return;
@@ -311,16 +347,23 @@ export default function ArenaPage() {
       const endTime = new Date(duel.endAt).getTime();
       return !Number.isNaN(endTime) && endTime <= Date.now();
     });
-    if (!resolving.length) return;
+    const active = challenges.filter(
+      (duel) => duel.status === "matched" && duel.startAt
+    );
+    if (!resolving.length && !active.length) return;
 
     const intervalId = window.setInterval(() => {
-      void Promise.all(resolving.map(resolveExpiredChallenge)).then(fetchChallenges);
+      const tasks = [
+        ...resolving.map(resolveExpiredChallenge),
+        ...active.map(updateChallengeProgress)
+      ];
+      void Promise.all(tasks).then(fetchChallenges);
     }, ARENA_POLL_INTERVAL_MS);
 
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [challenges, fetchChallenges, resolveExpiredChallenge]);
+  }, [challenges, fetchChallenges, resolveExpiredChallenge, updateChallengeProgress]);
 
   const challengeConfig = useMemo(() => {
     if (challengeType === "Nuoto") {
@@ -380,7 +423,6 @@ export default function ArenaPage() {
   const durationValue = parseNumericInput(challengeDuration);
   const isChallengeValid = useMemo(() => {
     return (
-      challengeRival.trim().length > 0 &&
       Number.isFinite(goalValue) &&
       goalValue > 0 &&
       Number.isFinite(durationValue) &&
@@ -392,7 +434,6 @@ export default function ArenaPage() {
       stakeValue <= lifeBalanceValue
     );
   }, [
-    challengeRival,
     goalValue,
     durationValue,
     isConnected,
@@ -456,7 +497,7 @@ export default function ArenaPage() {
 
       const insertPayload = {
         creator_address: address, // Corretto: corrisponde al DB
-        opponent_name: challengeRival,
+        opponent_name: null,
         type: challengeType,
         goal: goalValue, // Corretto: Numero
         stake: stakeValue, // Corretto: Numero
@@ -489,7 +530,6 @@ export default function ArenaPage() {
     address,
     challengeGoal,
     challengeDuration,
-    challengeRival,
     challengeStake,
     challengeType,
     isChallengeValid,
@@ -528,7 +568,7 @@ export default function ArenaPage() {
         const startAt = new Date();
         const endAt = new Date(startAt);
         endAt.setDate(startAt.getDate() + (duel.durationDays || CHALLENGE_DURATION_DAYS));
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from("challenges")
           .update({
             status: "matched",
@@ -536,10 +576,16 @@ export default function ArenaPage() {
             start_at: startAt.toISOString(),
             end_at: endAt.toISOString()
           })
-          .eq("id", duel.id);
+          .eq("id", duel.id)
+          .eq("status", "active")
+          .select("id");
         if (error) {
           console.error(error);
           setAcceptError("Errore aggiornamento sfida.");
+          return;
+        }
+        if (!data || data.length === 0) {
+          setAcceptError("Sfida già accettata da un altro utente.");
           return;
         }
 
@@ -982,31 +1028,6 @@ export default function ArenaPage() {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="mt-5">
-              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
-                Scegli Rivale
-              </p>
-              <div className="mt-3 flex items-center gap-3 overflow-x-auto pb-2">
-                {rivals.map((rival) => (
-                  <button
-                    key={`modal-${rival.id}`}
-                    type="button"
-                    onClick={() => setChallengeRival(rival.name)}
-                    className={`flex min-w-[110px] flex-col items-center gap-2 rounded-2xl border px-3 py-3 text-xs transition ${
-                      challengeRival === rival.name
-                        ? "border-red-400/70 bg-red-500/10 text-white"
-                        : "border-white/10 bg-slate-950/60 text-slate-300 hover:border-red-400/40 hover:text-white"
-                    }`}
-                  >
-                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-red-500/50 to-purple-500/40 text-sm font-bold">
-                      {rival.name.slice(0, 2).toUpperCase()}
-                    </span>
-                    <span className="text-[11px]">{rival.name}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
             <div className="mt-5 grid grid-cols-3 gap-3">
               {["Corsa", "Nuoto", "Palestra"].map((label) => (
                 <button
