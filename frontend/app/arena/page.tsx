@@ -231,6 +231,33 @@ function buildRateLimitMessage(retryAfter?: number) {
   return `Limite Strava raggiunto. Riprova tra ${seconds}s.`;
 }
 
+function useClaimConfetti() {
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [seed, setSeed] = useState(0);
+  const timerRef = useRef<number | null>(null);
+
+  const trigger = useCallback((duration = 2000) => {
+    setSeed((prev) => prev + 1);
+    setShowConfetti(true);
+    if (timerRef.current) {
+      window.clearTimeout(timerRef.current);
+    }
+    timerRef.current = window.setTimeout(() => {
+      setShowConfetti(false);
+    }, duration);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        window.clearTimeout(timerRef.current);
+      }
+    };
+  }, []);
+
+  return { showConfetti, seed, trigger };
+}
+
 function parseNumericInput(value: string) {
   const cleaned = value.replace(/[^\d.,-]/g, "").replace(",", ".");
   return Number(cleaned);
@@ -284,6 +311,11 @@ export default function ArenaPage() {
   const [refreshingChallengeId, setRefreshingChallengeId] = useState<string | null>(null);
   const lastProgressSyncRef = useRef(0);
   const [arenaWarnings, setArenaWarnings] = useState<Record<string, string>>({});
+  const {
+    showConfetti: showClaimConfetti,
+    seed: claimConfettiSeed,
+    trigger: triggerClaimConfetti
+  } = useClaimConfetti();
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
@@ -748,6 +780,9 @@ export default function ArenaPage() {
         if (!response.ok) {
           throw new Error(data?.error || "Errore claim.");
         }
+        if (duel.status === "resolved") {
+          triggerClaimConfetti();
+        }
         await fetchChallenges();
         await refetchLifeBalance();
         if (typeof window !== "undefined") {
@@ -770,6 +805,7 @@ export default function ArenaPage() {
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(239,68,68,0.18),transparent_55%)]" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_bottom,rgba(14,165,233,0.12),transparent_55%)]" />
+      {showClaimConfetti ? <ConfettiBurst seed={claimConfettiSeed} /> : null}
 
       <div className="relative mx-auto w-full max-w-6xl px-6 py-12 md:px-10">
         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -873,10 +909,12 @@ export default function ArenaPage() {
                     ? duel.opponentProgress
                     : duel.creatorProgress;
                 const totalGoal = duel.you.total;
-                const youPct = progressPercent(youProgress, totalGoal);
-                const rivalPct = progressPercent(rivalProgress, totalGoal);
+                const youProgressCapped = Math.min(youProgress, totalGoal);
+                const rivalProgressCapped = Math.min(rivalProgress, totalGoal);
+                const youPct = progressPercent(youProgressCapped, totalGoal);
+                const rivalPct = progressPercent(rivalProgressCapped, totalGoal);
                 const duelType = resolveDuelType(duel);
-                const gapValue = youProgress - rivalProgress;
+                const gapValue = youProgressCapped - rivalProgressCapped;
                 const gapLabel = formatGapLabel(duelType, gapValue, duel.unit);
                 const status =
                   youPct > rivalPct
@@ -1009,7 +1047,7 @@ export default function ArenaPage() {
                         {duel.you.name}
                       </p>
                       <p className="mt-2 text-lg font-semibold text-cyan-200">
-                        {youProgress}/{totalGoal}
+                        {youProgressCapped}/{totalGoal}
                       </p>
                       <p className="text-xs text-slate-400">Progresso</p>
                       {showStravaLink ? (
@@ -1033,7 +1071,7 @@ export default function ArenaPage() {
                         {rivalName}
                       </p>
                       <p className="mt-2 text-lg font-semibold text-red-200">
-                        {rivalProgress}/{totalGoal}
+                        {rivalProgressCapped}/{totalGoal}
                       </p>
                       <p className="text-xs text-slate-400">Progresso</p>
                     </div>
@@ -1282,6 +1320,67 @@ export default function ArenaPage() {
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function ConfettiBurst({ seed }: { seed: number }) {
+  const pieces = useMemo(() => {
+    const colors = ["#22d3ee", "#a855f7", "#38bdf8", "#f472b6", "#facc15"];
+    return Array.from({ length: 28 }, (_, index) => {
+      const size = 6 + Math.random() * 6;
+      return {
+        id: `${seed}-${index}`,
+        left: Math.random() * 100,
+        delay: Math.random() * 0.2,
+        duration: 1.2 + Math.random() * 0.6,
+        size,
+        drift: (Math.random() - 0.5) * 240,
+        color: colors[index % colors.length]
+      };
+    });
+  }, [seed]);
+
+  return (
+    <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden">
+      {pieces.map((piece) => (
+        <span
+          key={piece.id}
+          className="confetti-piece absolute top-0 rounded-sm"
+          style={{
+            left: `${piece.left}%`,
+            width: `${piece.size}px`,
+            height: `${piece.size * 0.6}px`,
+            backgroundColor: piece.color,
+            animationDuration: `${piece.duration}s`,
+            animationDelay: `${piece.delay}s`,
+            ["--drift" as any]: `${piece.drift}px`
+          }}
+        />
+      ))}
+      <style jsx>{`
+        .confetti-piece {
+          opacity: 0;
+          animation-name: confetti-fall;
+          animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+          animation-fill-mode: forwards;
+          filter: drop-shadow(0 0 6px rgba(34, 211, 238, 0.5));
+        }
+
+        @keyframes confetti-fall {
+          0% {
+            transform: translate3d(0, -20px, 0) rotate(0deg);
+            opacity: 0;
+          }
+          10% {
+            opacity: 1;
+          }
+          100% {
+            transform: translate3d(var(--drift), 110vh, 0) rotate(720deg);
+            opacity: 0;
+          }
+        }
+      `}</style>
     </div>
   );
 }

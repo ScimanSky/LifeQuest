@@ -849,6 +849,86 @@ function computeArenaProgress(activities, type) {
   return Math.round(km * 100) / 100;
 }
 
+function isArenaTypeMatch(activityType, targetType) {
+  if (!activityType) return false;
+  const normalized = String(activityType).toLowerCase();
+  if (targetType === "Nuoto") {
+    return normalized.includes("swim") || normalized.includes("nuoto");
+  }
+  if (targetType === "Corsa") {
+    return normalized.includes("run") || normalized.includes("corsa");
+  }
+  if (targetType === "Palestra") {
+    return ARENA_GYM_TYPES.has(activityType) ||
+      ARENA_GYM_TYPES.has(String(activityType)) ||
+      Array.from(ARENA_GYM_TYPES).some(
+        (entry) => entry.toLowerCase() === normalized
+      );
+  }
+  return false;
+}
+
+function getArenaActivityDelta(activity, arenaType) {
+  if (!activity) return 0;
+  const activityType = activity.type ?? "";
+  if (!isArenaTypeMatch(activityType, arenaType)) return 0;
+
+  if (arenaType === "Palestra") {
+    return 1;
+  }
+
+  const distance = Number(activity.distance) || 0;
+  if (arenaType === "Nuoto") {
+    return distance;
+  }
+
+  return distance / 1000;
+}
+
+function computeArenaProgressWithFinish(activities, type, goal) {
+  const arenaType = normalizeArenaType(type);
+  const target = Number(goal);
+  const hasTarget = Number.isFinite(target) && target > 0;
+  const entries = (activities || [])
+    .map((activity) => {
+      const dateValue = getActivityDate(activity);
+      if (!dateValue) return null;
+      const timestamp = new Date(dateValue).getTime();
+      if (Number.isNaN(timestamp)) return null;
+      const delta = getArenaActivityDelta(activity, arenaType);
+      if (!Number.isFinite(delta) || delta <= 0) return null;
+      return { timestamp, delta };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.timestamp - b.timestamp);
+
+  let progress = 0;
+  let finishedAt = null;
+
+  for (const entry of entries) {
+    progress += entry.delta;
+    if (hasTarget && !finishedAt && progress >= target) {
+      finishedAt = new Date(entry.timestamp).toISOString();
+      progress = target;
+      break;
+    }
+  }
+
+  if (hasTarget) {
+    progress = Math.min(progress, target);
+  }
+
+  return { progress, finishedAt };
+}
+
+function clampArenaProgress(progress, goal) {
+  const numericGoal = Number(goal);
+  if (!Number.isFinite(numericGoal) || numericGoal <= 0) {
+    return progress;
+  }
+  return Math.min(progress, numericGoal);
+}
+
 function getChallengeWindow(challenge) {
   const durationDays =
     Number(challenge?.duration_days) || ARENA_DEFAULT_DURATION_DAYS;
@@ -894,8 +974,8 @@ async function resolveArenaChallenge(challenge) {
   ]);
   const missingWallets = [];
   const [creatorActivitiesRaw, opponentActivitiesRaw] = await Promise.all([
-    fetchMintedActivities(creator),
-    fetchMintedActivities(opponent)
+    loadWalletActivities(creator),
+    loadWalletActivities(opponent)
   ]);
 
   const creatorActivities = filterActivitiesByRange(
@@ -909,8 +989,18 @@ async function resolveArenaChallenge(challenge) {
     endAt
   );
 
-  const creatorProgress = computeArenaProgress(creatorActivities, challenge.type);
-  const opponentProgress = computeArenaProgress(opponentActivities, challenge.type);
+  const creatorResult = computeArenaProgressWithFinish(
+    creatorActivities,
+    challenge.type,
+    challenge.goal
+  );
+  const opponentResult = computeArenaProgressWithFinish(
+    opponentActivities,
+    challenge.type,
+    challenge.goal
+  );
+  const creatorProgress = creatorResult.progress;
+  const opponentProgress = opponentResult.progress;
 
   if (!creatorToken?.refresh_token && creatorActivities.length === 0) {
     missingWallets.push(creator);
@@ -925,16 +1015,34 @@ async function resolveArenaChallenge(challenge) {
     return { status: "missing_tokens", missing_wallets: missingWallets };
   }
 
-  const diff = creatorProgress - opponentProgress;
-  const epsilon = 0.0001;
   let status = "resolved";
   let winnerAddress = null;
-  if (Math.abs(diff) <= epsilon) {
-    status = "draw";
-  } else if (diff > 0) {
+  const creatorFinish = creatorResult.finishedAt
+    ? new Date(creatorResult.finishedAt).getTime()
+    : null;
+  const opponentFinish = opponentResult.finishedAt
+    ? new Date(opponentResult.finishedAt).getTime()
+    : null;
+  if (creatorFinish && opponentFinish) {
+    if (creatorFinish === opponentFinish) {
+      status = "draw";
+    } else {
+      winnerAddress = creatorFinish < opponentFinish ? creator : opponent;
+    }
+  } else if (creatorFinish) {
     winnerAddress = creator;
-  } else {
+  } else if (opponentFinish) {
     winnerAddress = opponent;
+  } else {
+    const diff = creatorProgress - opponentProgress;
+    const epsilon = 0.0001;
+    if (Math.abs(diff) <= epsilon) {
+      status = "draw";
+    } else if (diff > 0) {
+      winnerAddress = creator;
+    } else {
+      winnerAddress = opponent;
+    }
   }
 
   await updateChallengeById(challenge.id, {
@@ -981,8 +1089,8 @@ async function updateArenaProgress(challenge) {
   ]);
   const missingWallets = [];
   const [creatorActivitiesRaw, opponentActivitiesRaw] = await Promise.all([
-    fetchMintedActivities(creator),
-    fetchMintedActivities(opponent)
+    loadWalletActivities(creator),
+    loadWalletActivities(opponent)
   ]);
 
   const creatorActivities = filterActivitiesByRange(
@@ -996,8 +1104,18 @@ async function updateArenaProgress(challenge) {
     rangeEnd
   );
 
-  const creatorProgress = computeArenaProgress(creatorActivities, challenge.type);
-  const opponentProgress = computeArenaProgress(opponentActivities, challenge.type);
+  const creatorResult = computeArenaProgressWithFinish(
+    creatorActivities,
+    challenge.type,
+    challenge.goal
+  );
+  const opponentResult = computeArenaProgressWithFinish(
+    opponentActivities,
+    challenge.type,
+    challenge.goal
+  );
+  const creatorProgress = creatorResult.progress;
+  const opponentProgress = opponentResult.progress;
 
   if (!creatorToken?.refresh_token && creatorActivities.length === 0) {
     missingWallets.push(creator);
@@ -1012,17 +1130,47 @@ async function updateArenaProgress(challenge) {
     return { status: "missing_tokens", missing_wallets: missingWallets };
   }
 
-  await updateChallengeById(challenge.id, {
+  let status = missingWallets.length > 0 ? "partial" : "updated";
+  let winnerAddress = null;
+  const creatorFinish = creatorResult.finishedAt
+    ? new Date(creatorResult.finishedAt).getTime()
+    : null;
+  const opponentFinish = opponentResult.finishedAt
+    ? new Date(opponentResult.finishedAt).getTime()
+    : null;
+  if (creatorFinish || opponentFinish) {
+    if (creatorFinish && opponentFinish) {
+      if (creatorFinish === opponentFinish) {
+        status = "draw";
+      } else {
+        status = "resolved";
+        winnerAddress = creatorFinish < opponentFinish ? creator : opponent;
+      }
+    } else {
+      status = "resolved";
+      winnerAddress = creatorFinish ? creator : opponent;
+    }
+  }
+
+  const patch = {
     creator_progress: creatorProgress,
     opponent_progress: opponentProgress,
     start_at: startAt,
     end_at: endAt || rangeEnd
-  });
+  };
+  if (status === "resolved" || status === "draw") {
+    patch.status = status;
+    patch.winner_address = winnerAddress;
+    patch.resolved_at = new Date().toISOString();
+  }
+
+  await updateChallengeById(challenge.id, patch);
 
   return {
     creator_progress: creatorProgress,
     opponent_progress: opponentProgress,
-    status: missingWallets.length > 0 ? "partial" : "updated",
+    status,
+    winner_address: winnerAddress,
     missing_wallets: missingWallets.length ? missingWallets : undefined
   };
 }
