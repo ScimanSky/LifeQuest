@@ -26,6 +26,7 @@ const rivals = [
 
 const CHALLENGE_DURATION_DAYS = 7;
 const CHALLENGE_DURATION_OPTIONS = ["1", "2", "3", "4", "5", "6", "7"];
+const ARENA_POLL_INTERVAL_MS = 20000;
 const BACKEND_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 const LIFE_TOKEN_ADDRESS = (process.env.NEXT_PUBLIC_LIFE_TOKEN_ADDRESS ??
@@ -299,6 +300,26 @@ export default function ArenaPage() {
     );
     if (!expired.length) return;
     void Promise.all(expired.map(resolveExpiredChallenge)).then(fetchChallenges);
+  }, [challenges, fetchChallenges, resolveExpiredChallenge]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!BACKEND_BASE_URL) return;
+    if (!challenges.length) return;
+    const resolving = challenges.filter((duel) => {
+      if (duel.status !== "matched" || !duel.endAt) return false;
+      const endTime = new Date(duel.endAt).getTime();
+      return !Number.isNaN(endTime) && endTime <= Date.now();
+    });
+    if (!resolving.length) return;
+
+    const intervalId = window.setInterval(() => {
+      void Promise.all(resolving.map(resolveExpiredChallenge)).then(fetchChallenges);
+    }, ARENA_POLL_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
   }, [challenges, fetchChallenges, resolveExpiredChallenge]);
 
   const challengeConfig = useMemo(() => {
