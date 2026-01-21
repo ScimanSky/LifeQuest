@@ -997,7 +997,6 @@ export default function ArenaPage() {
                 const duelType = resolveDuelType(duel);
                 const gapValue = youProgressCapped - rivalProgressCapped;
                 const gapLabel = formatGapLabel(duelType, gapValue, duel.unit);
-                const showStravaLink = duelType === "Corsa" || duelType === "Nuoto";
                 const isCreator = viewerIsCreator;
                 const isOpponent =
                   Boolean(address && duel.opponentAddress) &&
@@ -1162,16 +1161,6 @@ export default function ArenaPage() {
                         {youProgressCapped}/{totalGoal}
                       </p>
                       <p className="text-xs text-slate-400">Progresso</p>
-                      {showStravaLink ? (
-                        <a
-                          href="https://www.strava.com/upload/activity"
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-3 inline-flex text-xs font-semibold text-cyan-200 transition hover:text-cyan-100"
-                        >
-                          Apri Strava per registrare
-                        </a>
-                      ) : null}
                     </div>
 
                     <div className="flex items-center justify-center text-sm font-semibold text-red-200">
