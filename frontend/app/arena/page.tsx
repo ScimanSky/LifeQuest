@@ -11,6 +11,7 @@ import {
   UserPlus,
   X
 } from "lucide-react";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useAccount, usePublicClient, useReadContract, useWriteContract } from "wagmi";
 import { formatEther, parseAbi, parseEther, type Address } from "viem";
 import { supabase } from "../../utils/supabase";
@@ -24,6 +25,8 @@ const rivals = [
 ];
 
 const CHALLENGE_DURATION_DAYS = 7;
+const CHALLENGE_DURATION_OPTIONS = ["1", "2", "3", "4", "5", "6", "7"];
+const BACKEND_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 const LIFE_TOKEN_ADDRESS = (process.env.NEXT_PUBLIC_LIFE_TOKEN_ADDRESS ??
   process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ??
@@ -46,6 +49,14 @@ type ArenaDuel = {
   status?: string | null;
   creatorAddress?: string | null;
   opponentAddress?: string | null;
+  winnerAddress?: string | null;
+  creatorClaimed?: boolean;
+  opponentClaimed?: boolean;
+  creatorProgress: number;
+  opponentProgress: number;
+  durationDays: number;
+  startAt?: string | null;
+  endAt?: string | null;
   you: { name: string; progress: number; total: number };
   rival: { name: string; progress: number; total: number };
   timeLeft: string;
@@ -62,6 +73,14 @@ type ChallengeRow = {
   goal?: number | string | null;
   stake?: number | string | null;
   status?: string | null;
+  duration_days?: number | string | null;
+  start_at?: string | null;
+  end_at?: string | null;
+  winner_address?: string | null;
+  creator_progress?: number | string | null;
+  opponent_progress?: number | string | null;
+  creator_claimed?: boolean | null;
+  opponent_claimed?: boolean | null;
   created_at?: string | null;
 };
 
@@ -70,12 +89,10 @@ function progressPercent(current: number, total: number) {
   return Math.min(100, Math.round((current / total) * 100));
 }
 
-function formatTimeLeft(createdAt?: string | null, durationDays = CHALLENGE_DURATION_DAYS) {
-  if (!createdAt) return `${durationDays} giorni`;
-  const start = new Date(createdAt);
-  if (Number.isNaN(start.getTime())) return `${durationDays} giorni`;
-  const end = new Date(start);
-  end.setDate(start.getDate() + durationDays);
+function formatTimeLeft(endAt?: string | null, fallbackDays = CHALLENGE_DURATION_DAYS) {
+  if (!endAt) return `${fallbackDays} giorni`;
+  const end = new Date(endAt);
+  if (Number.isNaN(end.getTime())) return `${fallbackDays} giorni`;
   const diffMs = end.getTime() - Date.now();
   if (diffMs <= 0) return "Scaduta";
   const hours = Math.ceil(diffMs / (1000 * 60 * 60));
@@ -98,6 +115,19 @@ function buildDuelFromRow(row: ChallengeRow): ArenaDuel {
   const unit = type === "Palestra" ? "sessioni" : type === "Nuoto" ? "metri" : "km";
   const title = `${type} ${goalValue} ${unit}`;
   const stakeValue = Number(row.stake) || 0;
+  const durationDays = Number(row.duration_days) || CHALLENGE_DURATION_DAYS;
+  const startAt = row.start_at ?? row.created_at ?? null;
+  let endAt = row.end_at ?? null;
+  if (!endAt && startAt) {
+    const startDate = new Date(startAt);
+    if (!Number.isNaN(startDate.getTime())) {
+      const endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + durationDays);
+      endAt = endDate.toISOString();
+    }
+  }
+  const creatorProgress = Number(row.creator_progress) || 0;
+  const opponentProgress = Number(row.opponent_progress) || 0;
   return {
     id: row.id ?? `${type}-${Date.now()}`,
     title,
@@ -106,9 +136,17 @@ function buildDuelFromRow(row: ChallengeRow): ArenaDuel {
     status: row.status ?? "active",
     creatorAddress: row.creator_address ?? null,
     opponentAddress: row.opponent_address ?? null,
+    winnerAddress: row.winner_address ?? null,
+    creatorClaimed: Boolean(row.creator_claimed),
+    opponentClaimed: Boolean(row.opponent_claimed),
+    creatorProgress,
+    opponentProgress,
+    durationDays,
+    startAt,
+    endAt,
     you: { name: "Tu", progress: 0, total: goalValue },
     rival: { name: row.opponent_name ?? "Avversario", progress: 0, total: goalValue },
-    timeLeft: formatTimeLeft(row.created_at, CHALLENGE_DURATION_DAYS),
+    timeLeft: formatTimeLeft(endAt, durationDays),
     stake: `${stakeValue} LIFE`,
     stakeValue
   };
@@ -174,6 +212,7 @@ export default function ArenaPage() {
   const [challengeType, setChallengeType] = useState("Corsa");
   const [challengeGoal, setChallengeGoal] = useState("");
   const [challengeStake, setChallengeStake] = useState("");
+  const [challengeDuration, setChallengeDuration] = useState("7");
   const [challengeRival, setChallengeRival] = useState(rivals[0]?.name ?? "");
   const [challenges, setChallenges] = useState<ArenaDuel[]>([]);
   const [isChallengesLoading, setIsChallengesLoading] = useState(true);
@@ -185,6 +224,9 @@ export default function ArenaPage() {
   const [acceptingChallengeId, setAcceptingChallengeId] = useState<string | null>(null);
   const [acceptStage, setAcceptStage] = useState<"transferring" | "updating" | null>(null);
   const [acceptError, setAcceptError] = useState<string | null>(null);
+  const [claimingChallengeId, setClaimingChallengeId] = useState<string | null>(null);
+  const [claimStage, setClaimStage] = useState<"claiming" | null>(null);
+  const [claimError, setClaimError] = useState<string | null>(null);
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
@@ -227,38 +269,101 @@ export default function ArenaPage() {
     void fetchChallenges();
   }, [fetchChallenges]);
 
+  const resolveExpiredChallenge = useCallback(
+    async (duel: ArenaDuel) => {
+      if (!BACKEND_BASE_URL) return;
+      if (duel.status !== "matched") return;
+      if (!duel.endAt) return;
+      const endTime = new Date(duel.endAt).getTime();
+      if (Number.isNaN(endTime) || endTime > Date.now()) return;
+      try {
+        await fetch(`${BACKEND_BASE_URL}/arena/resolve`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ challengeId: duel.id })
+        });
+      } catch (error) {
+        console.error("Errore risoluzione sfida:", error);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!challenges.length) return;
+    const expired = challenges.filter(
+      (duel) =>
+        duel.status === "matched" &&
+        duel.endAt &&
+        new Date(duel.endAt).getTime() <= Date.now()
+    );
+    if (!expired.length) return;
+    void Promise.all(expired.map(resolveExpiredChallenge)).then(fetchChallenges);
+  }, [challenges, fetchChallenges, resolveExpiredChallenge]);
+
   const challengeConfig = useMemo(() => {
     if (challengeType === "Nuoto") {
       return {
         unit: "metri",
-        chips: ["500", "1000", "2000"]
+        chips: [
+          { value: "500" },
+          { value: "1000" },
+          { value: "2000" },
+          { value: "2500" },
+          { value: "3000" },
+          { value: "3500" },
+          { value: "4000" }
+        ]
       };
     }
     if (challengeType === "Palestra") {
       return {
         unit: "sessioni",
-        chips: ["3", "5", "10"]
+        chips: [{ value: "3" }, { value: "5" }, { value: "10" }]
       };
     }
     return {
       unit: "km",
-      chips: ["5", "10", "21"]
+      chips: [
+        { value: "5" },
+        { value: "10" },
+        { value: "15" },
+        { value: "20" },
+        { value: "42.2", label: "Maratona" }
+      ]
     };
   }, [challengeType]);
+  const selectedGoalChip = useMemo(() => {
+    if (!challengeConfig.chips.length) return null;
+    return (
+      challengeConfig.chips.find((chip) => chip.value === challengeGoal) ??
+      challengeConfig.chips[0]
+    );
+  }, [challengeConfig, challengeGoal]);
+  const goalDisplay = selectedGoalChip
+    ? selectedGoalChip.label
+      ? `${selectedGoalChip.label} (${selectedGoalChip.value})`
+      : `${selectedGoalChip.value}`
+    : "";
+  const durationLabel = challengeDuration;
 
   useEffect(() => {
     if (!challengeConfig.chips.length) return;
-    if (challengeConfig.chips.includes(challengeGoal)) return;
-    setChallengeGoal(challengeConfig.chips[0]);
+    const values = challengeConfig.chips.map((chip) => chip.value);
+    if (values.includes(challengeGoal)) return;
+    setChallengeGoal(challengeConfig.chips[0].value);
   }, [challengeConfig, challengeGoal]);
 
   const stakeValue = parseNumericInput(challengeStake);
   const goalValue = parseNumericInput(challengeGoal);
+  const durationValue = parseNumericInput(challengeDuration);
   const isChallengeValid = useMemo(() => {
     return (
       challengeRival.trim().length > 0 &&
       Number.isFinite(goalValue) &&
       goalValue > 0 &&
+      Number.isFinite(durationValue) &&
+      durationValue > 0 &&
       isConnected &&
       lifeBalanceValue !== null &&
       Number.isFinite(stakeValue) &&
@@ -268,6 +373,7 @@ export default function ArenaPage() {
   }, [
     challengeRival,
     goalValue,
+    durationValue,
     isConnected,
     lifeBalanceValue,
     stakeValue
@@ -289,9 +395,14 @@ export default function ArenaPage() {
     // 2. Pulizia dati (Risolve errore 400 Supabase)
     const goalValue = parseNumericInput(challengeGoal);
     const stakeValue = parseNumericInput(challengeStake);
+    const durationValue = parseNumericInput(challengeDuration);
 
     if (!Number.isFinite(goalValue) || goalValue <= 0) {
       setSaveError("Obiettivo non valido.");
+      return;
+    }
+    if (!Number.isFinite(durationValue) || durationValue <= 0) {
+      setSaveError("Durata non valida.");
       return;
     }
     if (!Number.isFinite(stakeValue) || stakeValue <= 0) {
@@ -328,6 +439,7 @@ export default function ArenaPage() {
         type: challengeType,
         goal: goalValue, // Corretto: Numero
         stake: stakeValue, // Corretto: Numero
+        duration_days: durationValue,
         status: "active"
       };
 
@@ -355,6 +467,7 @@ export default function ArenaPage() {
   }, [
     address,
     challengeGoal,
+    challengeDuration,
     challengeRival,
     challengeStake,
     challengeType,
@@ -391,9 +504,17 @@ export default function ArenaPage() {
         await publicClient.waitForTransactionReceipt({ hash: transferHash });
 
         setAcceptStage("updating");
+        const startAt = new Date();
+        const endAt = new Date(startAt);
+        endAt.setDate(startAt.getDate() + (duel.durationDays || CHALLENGE_DURATION_DAYS));
         const { error } = await supabase
           .from("challenges")
-          .update({ status: "matched", opponent_address: address })
+          .update({
+            status: "matched",
+            opponent_address: address,
+            start_at: startAt.toISOString(),
+            end_at: endAt.toISOString()
+          })
           .eq("id", duel.id);
         if (error) {
           console.error(error);
@@ -417,6 +538,47 @@ export default function ArenaPage() {
     [address, fetchChallenges, publicClient, writeContractAsync]
   );
 
+  const handleClaimChallenge = useCallback(
+    async (duel: ArenaDuel) => {
+      if (!address) return;
+      if (!BACKEND_BASE_URL) {
+        setClaimError("Backend non configurato.");
+        return;
+      }
+      setClaimError(null);
+      setClaimingChallengeId(duel.id);
+      setClaimStage("claiming");
+      try {
+        const response = await fetch(`${BACKEND_BASE_URL}/arena/claim`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            challengeId: duel.id,
+            walletAddress: address
+          })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data?.error || "Errore claim.");
+        }
+        await fetchChallenges();
+        await refetchLifeBalance();
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("lifequest:balance-refresh", Date.now().toString());
+        }
+      } catch (error) {
+        console.error(error);
+        const message =
+          (error as { message?: string })?.message ?? "Errore claim.";
+        setClaimError(message);
+      } finally {
+        setClaimStage(null);
+        setClaimingChallengeId(null);
+      }
+    },
+    [address, fetchChallenges, refetchLifeBalance]
+  );
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(239,68,68,0.18),transparent_55%)]" />
@@ -431,9 +593,14 @@ export default function ArenaPage() {
             <ArrowLeft className="h-4 w-4" />
             Torna alla Dashboard
           </Link>
-          <div className="inline-flex items-center gap-2 rounded-full border border-red-400/40 bg-red-500/10 px-4 py-2 text-xs font-semibold text-red-200">
-            <Bolt className="h-4 w-4" />
-            Arena 1vs1
+          <div className="flex items-center gap-3">
+            <div className="inline-flex items-center gap-2 rounded-full border border-red-400/40 bg-red-500/10 px-4 py-2 text-xs font-semibold text-red-200">
+              <Bolt className="h-4 w-4" />
+              Arena 1vs1
+            </div>
+            <div className="scale-[0.9]">
+              <ConnectButton />
+            </div>
           </div>
         </div>
 
@@ -506,13 +673,23 @@ export default function ArenaPage() {
               </div>
             ) : (
               challenges.map((duel) => {
-                const youPct = progressPercent(duel.you.progress, duel.you.total);
-                const rivalPct = progressPercent(
-                  duel.rival.progress,
-                  duel.rival.total
-                );
+                const viewerIsCreator =
+                  Boolean(address && duel.creatorAddress) &&
+                  duel.creatorAddress?.toLowerCase() ===
+                    (address?.toLowerCase() ?? "");
+                const youProgress =
+                  viewerIsCreator || !address
+                    ? duel.creatorProgress
+                    : duel.opponentProgress;
+                const rivalProgress =
+                  viewerIsCreator || !address
+                    ? duel.opponentProgress
+                    : duel.creatorProgress;
+                const totalGoal = duel.you.total;
+                const youPct = progressPercent(youProgress, totalGoal);
+                const rivalPct = progressPercent(rivalProgress, totalGoal);
                 const duelType = resolveDuelType(duel);
-                const gapValue = duel.you.progress - duel.rival.progress;
+                const gapValue = youProgress - rivalProgress;
                 const gapLabel = formatGapLabel(duelType, gapValue, duel.unit);
                 const status =
                   youPct > rivalPct
@@ -530,10 +707,7 @@ export default function ArenaPage() {
                           tone: "border-slate-600/70 bg-slate-700/40 text-slate-200"
                         };
                 const showStravaLink = duelType === "Corsa" || duelType === "Nuoto";
-                const isCreator =
-                  Boolean(address && duel.creatorAddress) &&
-                  duel.creatorAddress?.toLowerCase() ===
-                    (address?.toLowerCase() ?? "");
+                const isCreator = viewerIsCreator;
                 const canAccept =
                   isConnected && !isCreator && duel.status === "active";
                 const isAccepting = acceptingChallengeId === duel.id;
@@ -543,13 +717,62 @@ export default function ArenaPage() {
                     : acceptStage === "updating" && isAccepting
                       ? "Entro in Arena..."
                       : "Accetta";
-
                 const statusLabel =
-                  duel.status === "matched" ? "Matched" : "Open";
+                  duel.status === "resolved"
+                    ? "Conclusa"
+                    : duel.status === "draw"
+                      ? "Pareggio"
+                      : duel.status === "claimed"
+                        ? "Claim completato"
+                        : duel.status === "matched"
+                          ? "In corso"
+                          : "Aperta";
                 const statusTone =
-                  duel.status === "matched"
+                  duel.status === "resolved"
                     ? "border-emerald-400/60 bg-emerald-500/15 text-emerald-200"
-                    : "border-slate-600/70 bg-slate-700/40 text-slate-200";
+                    : duel.status === "draw"
+                      ? "border-amber-400/60 bg-amber-500/15 text-amber-200"
+                      : duel.status === "claimed"
+                        ? "border-indigo-400/60 bg-indigo-500/15 text-indigo-200"
+                        : duel.status === "matched"
+                          ? "border-cyan-400/60 bg-cyan-500/15 text-cyan-200"
+                          : "border-slate-600/70 bg-slate-700/40 text-slate-200";
+                const statusText =
+                  duel.status === "resolved"
+                    ? "Conclusa, premi disponibili"
+                    : duel.status === "draw"
+                      ? "Pareggio, rimborso disponibile"
+                      : duel.status === "claimed"
+                        ? "Premio riscattato"
+                        : duel.status === "matched"
+                          ? "Sfida attiva"
+                          : "Sfida aperta";
+                const isWinner =
+                  Boolean(address && duel.winnerAddress) &&
+                  duel.winnerAddress?.toLowerCase() ===
+                    (address?.toLowerCase() ?? "");
+                const isOpponent =
+                  Boolean(address && duel.opponentAddress) &&
+                  duel.opponentAddress?.toLowerCase() ===
+                    (address?.toLowerCase() ?? "");
+                const isDraw = duel.status === "draw";
+                const hasClaimed = isCreator
+                  ? duel.creatorClaimed
+                  : isOpponent
+                    ? duel.opponentClaimed
+                    : false;
+                const canClaim =
+                  isConnected &&
+                  !hasClaimed &&
+                  ((duel.status === "resolved" && isWinner) ||
+                    (duel.status === "draw" && (isCreator || isOpponent)));
+                const isClaiming = claimingChallengeId === duel.id;
+                const claimLabel =
+                  claimStage === "claiming" && isClaiming
+                    ? "Claim in corso..."
+                    : duel.status === "draw"
+                      ? "Rimborso 85%"
+                      : "Claim premio";
 
                 return (
                   <div
@@ -584,7 +807,7 @@ export default function ArenaPage() {
                         {duel.you.name}
                       </p>
                       <p className="mt-2 text-lg font-semibold text-cyan-200">
-                        {duel.you.progress}/{duel.you.total}
+                        {youProgress}/{totalGoal}
                       </p>
                       <p className="text-xs text-slate-400">Progresso</p>
                       {showStravaLink ? (
@@ -608,7 +831,7 @@ export default function ArenaPage() {
                         {duel.rival.name}
                       </p>
                       <p className="mt-2 text-lg font-semibold text-red-200">
-                        {duel.rival.progress}/{duel.rival.total}
+                        {rivalProgress}/{totalGoal}
                       </p>
                       <p className="text-xs text-slate-400">Progresso</p>
                     </div>
@@ -649,7 +872,7 @@ export default function ArenaPage() {
 
                   <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                     <span className="text-xs uppercase tracking-[0.3em] text-slate-400">
-                      {duel.status === "matched" ? "Sfida attiva" : "Sfida aperta"}
+                      {statusText}
                     </span>
                     {duel.status === "active" ? (
                       <button
@@ -665,10 +888,29 @@ export default function ArenaPage() {
                         {isConnected ? acceptLabel : "Connetti wallet"}
                       </button>
                     ) : null}
+                    {duel.status === "resolved" || duel.status === "draw" ? (
+                      <button
+                        type="button"
+                        onClick={() => handleClaimChallenge(duel)}
+                        disabled={!canClaim || isClaiming}
+                        className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
+                          canClaim && !isClaiming
+                            ? "border border-emerald-400/60 bg-emerald-500/15 text-emerald-200 hover:border-emerald-300/80 hover:text-emerald-100"
+                            : "border border-slate-700/60 bg-slate-900/60 text-slate-500 cursor-not-allowed"
+                        }`}
+                      >
+                        {isConnected ? claimLabel : "Connetti wallet"}
+                      </button>
+                    ) : null}
                   </div>
                   {acceptError && isAccepting ? (
                     <div className="mt-3 rounded-2xl border border-rose-400/40 bg-rose-500/10 px-4 py-2 text-xs text-rose-200">
                       {acceptError}
+                    </div>
+                  ) : null}
+                  {claimError && isClaiming ? (
+                    <div className="mt-3 rounded-2xl border border-amber-400/40 bg-amber-500/10 px-4 py-2 text-xs text-amber-200">
+                      {claimError}
                     </div>
                   ) : null}
                 </div>
@@ -747,11 +989,34 @@ export default function ArenaPage() {
             </div>
             <div className="mt-4 grid gap-3">
               <label className="text-xs text-slate-300">
-                Durata/Obiettivo ({challengeConfig.unit})
+                Durata sfida (giorni)
                 <div className="mt-2 flex items-center justify-between rounded-xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-200">
-                  <span className="font-mono">
-                    {challengeGoal || challengeConfig.chips[0]}
+                  <span className="font-mono">{durationLabel}</span>
+                  <span className="text-xs text-slate-400">
+                    {challengeDuration === "1" ? "giorno" : "giorni"}
                   </span>
+                </div>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {CHALLENGE_DURATION_OPTIONS.map((option) => (
+                  <button
+                    key={`duration-${option}`}
+                    type="button"
+                    onClick={() => setChallengeDuration(option)}
+                    className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition ${
+                      challengeDuration === option
+                        ? "border-red-400/70 bg-red-500/20 text-white"
+                        : "border-white/10 bg-slate-950/60 text-slate-200 hover:border-red-400/50 hover:text-white"
+                    }`}
+                  >
+                    {option} {option === "1" ? "giorno" : "giorni"}
+                  </button>
+                ))}
+              </div>
+              <label className="text-xs text-slate-300">
+                Obiettivo ({challengeConfig.unit})
+                <div className="mt-2 flex items-center justify-between rounded-xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-200">
+                  <span className="font-mono">{goalDisplay}</span>
                   <span className="text-xs text-slate-400">
                     {challengeConfig.unit}
                   </span>
@@ -760,12 +1025,14 @@ export default function ArenaPage() {
               <div className="flex flex-wrap gap-2">
                 {challengeConfig.chips.map((chip) => (
                   <button
-                    key={`chip-${chip}`}
+                    key={`chip-${chip.value}`}
                     type="button"
-                    onClick={() => setChallengeGoal(chip)}
+                    onClick={() => setChallengeGoal(chip.value)}
                     className="rounded-full border border-white/10 bg-slate-950/60 px-3 py-1 text-[11px] font-semibold text-slate-200 transition hover:border-red-400/50 hover:text-white"
                   >
-                    {chip} {challengeConfig.unit}
+                    {chip.label
+                      ? `${chip.label} (${chip.value} ${challengeConfig.unit})`
+                      : `${chip.value} ${challengeConfig.unit}`}
                   </button>
                 ))}
               </div>

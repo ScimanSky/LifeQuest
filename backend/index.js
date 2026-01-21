@@ -31,12 +31,15 @@ const STRAVA_REDIRECT_URI =
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 const STRAVA_AFTER_TIMESTAMP = 1767225600;
 const STRAVA_PER_PAGE = 100;
+const ARENA_DEFAULT_DURATION_DAYS = 7;
+const ARENA_DRAW_REFUND_RATE = 0.85;
 const IRON_PROTOCOL_TYPES = new Set([
   "WeightTraining",
   "Workout",
   "Crossfit"
 ]);
 const MINDFULNESS_TYPES = new Set(["Yoga", "Meditation", "Mindfulness"]);
+const ARENA_GYM_TYPES = new Set([...IRON_PROTOCOL_TYPES, ...MINDFULNESS_TYPES]);
 const MINDFULNESS_MIN_SECONDS = 600;
 const LEVEL_XP = 2000;
 const WEEKLY_GOALS = {
@@ -53,11 +56,52 @@ const CONTRACT_ABI = [
 const PAID_ACTIVITIES_PATH = path.join(__dirname, "paid_activities.json");
 const STRAVA_TOKEN_PATH = path.join(__dirname, "strava_tokens.json");
 const DATABASE_PATH = path.join(__dirname, "database.json");
+const SUPABASE_URL =
+  process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
 function normalizeWallet(address) {
   if (!address || typeof address !== "string") return null;
   if (!ethers.isAddress(address)) return null;
   return address.toLowerCase();
+}
+
+function ensureSupabaseConfig() {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("Supabase non configurato");
+  }
+}
+
+function supabaseHeaders() {
+  return {
+    apikey: SUPABASE_SERVICE_ROLE_KEY,
+    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    "Content-Type": "application/json",
+    Prefer: "return=representation"
+  };
+}
+
+async function fetchChallengeById(challengeId) {
+  ensureSupabaseConfig();
+  const response = await axios.get(`${SUPABASE_URL}/rest/v1/challenges`, {
+    headers: supabaseHeaders(),
+    params: {
+      id: `eq.${challengeId}`,
+      select: "*"
+    }
+  });
+  const rows = Array.isArray(response.data) ? response.data : [];
+  return rows[0] || null;
+}
+
+async function updateChallengeById(challengeId, patch) {
+  ensureSupabaseConfig();
+  const response = await axios.patch(
+    `${SUPABASE_URL}/rest/v1/challenges?id=eq.${challengeId}`,
+    patch,
+    { headers: supabaseHeaders() }
+  );
+  return response.data;
 }
 
 function loadPaidActivitiesStore() {
@@ -431,6 +475,86 @@ async function fetchBalance(address) {
   return contract.balanceOf(address);
 }
 
+async function getStravaAccessToken(wallet) {
+  const tokensStore = loadStravaTokens();
+  const tokens = tokensStore.wallets[wallet];
+  if (!tokens || !tokens.refresh_token) {
+    throw new Error("Token Strava mancante");
+  }
+
+  const refreshResponse = await axios.post(
+    "https://www.strava.com/oauth/token",
+    new URLSearchParams({
+      client_id: process.env.STRAVA_CLIENT_ID,
+      client_secret: process.env.STRAVA_CLIENT_SECRET,
+      grant_type: "refresh_token",
+      refresh_token: tokens.refresh_token
+    }).toString(),
+    {
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      }
+    }
+  );
+
+  const accessToken = refreshResponse.data?.access_token;
+  const refreshToken = refreshResponse.data?.refresh_token;
+  if (!accessToken) {
+    throw new Error("Token Strava non valido");
+  }
+
+  if (refreshToken && refreshToken !== tokens.refresh_token) {
+    tokensStore.wallets[wallet] = {
+      ...tokens,
+      refresh_token: refreshToken,
+      updated_at: new Date().toISOString()
+    };
+    if (tokensStore.wallets[wallet]?.athlete_id) {
+      tokensStore.athleteToWallet[tokensStore.wallets[wallet].athlete_id] = wallet;
+    }
+    saveStravaTokens(tokensStore);
+  }
+
+  return accessToken;
+}
+
+async function fetchActivitiesInRange(accessToken, startAt, endAt) {
+  const activities = [];
+  let page = 1;
+  const after = Math.floor(new Date(startAt).getTime() / 1000);
+  const before = Math.floor(new Date(endAt).getTime() / 1000);
+
+  while (true) {
+    const response = await axios.get(
+      "https://www.strava.com/api/v3/athlete/activities",
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        },
+        params: {
+          per_page: STRAVA_PER_PAGE,
+          page,
+          after,
+          before
+        }
+      }
+    );
+
+    const data = Array.isArray(response.data) ? response.data : [];
+    if (data.length === 0) {
+      break;
+    }
+
+    activities.push(...data);
+    if (data.length < STRAVA_PER_PAGE) {
+      break;
+    }
+    page += 1;
+  }
+
+  return activities;
+}
+
 async function fetchRecentActivities(accessToken) {
   const activities = [];
   let page = 1;
@@ -511,6 +635,148 @@ function evaluateActivities(activities, paidIds) {
   }
 
   return { pendingActivities, totalReward };
+}
+
+function normalizeArenaType(type) {
+  const value = (type || "").toLowerCase();
+  if (value.includes("nuoto") || value.includes("swim")) return "Nuoto";
+  if (value.includes("palestra") || value.includes("gym")) return "Palestra";
+  return "Corsa";
+}
+
+function computeArenaProgress(activities, type) {
+  const arenaType = normalizeArenaType(type);
+  if (!Array.isArray(activities)) return 0;
+
+  if (arenaType === "Palestra") {
+    return activities.reduce((count, activity) => {
+      if (!activity) return count;
+      if (ARENA_GYM_TYPES.has(activity.type)) {
+        return count + 1;
+      }
+      return count;
+    }, 0);
+  }
+
+  if (arenaType === "Nuoto") {
+    const meters = activities.reduce((sum, activity) => {
+      if (!activity || activity.type !== "Swim") return sum;
+      const distance = Number(activity.distance) || 0;
+      return sum + distance;
+    }, 0);
+    return Math.round(meters);
+  }
+
+  const km = activities.reduce((sum, activity) => {
+    if (!activity || activity.type !== "Run") return sum;
+    const distance = Number(activity.distance) || 0;
+    return sum + distance / 1000;
+  }, 0);
+  return Math.round(km * 100) / 100;
+}
+
+function getChallengeWindow(challenge) {
+  const durationDays =
+    Number(challenge?.duration_days) || ARENA_DEFAULT_DURATION_DAYS;
+  const startAt =
+    challenge?.start_at || challenge?.created_at || null;
+  let endAt = challenge?.end_at || null;
+  if (startAt && !endAt) {
+    const startDate = new Date(startAt);
+    if (!Number.isNaN(startDate.getTime())) {
+      const endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + durationDays);
+      endAt = endDate.toISOString();
+    }
+  }
+  return { startAt, endAt, durationDays };
+}
+
+async function resolveArenaChallenge(challenge) {
+  if (!challenge?.id) {
+    throw new Error("Id sfida mancante");
+  }
+  const { startAt, endAt } = getChallengeWindow(challenge);
+  if (!startAt || !endAt) {
+    throw new Error("Finestra sfida non valida");
+  }
+  const endTime = new Date(endAt).getTime();
+  if (Number.isNaN(endTime)) {
+    throw new Error("Data fine sfida non valida");
+  }
+  if (endTime > Date.now()) {
+    return { status: "pending" };
+  }
+
+  const creator = normalizeWallet(challenge.creator_address);
+  const opponent = normalizeWallet(challenge.opponent_address);
+  if (!creator || !opponent) {
+    throw new Error("Wallet sfida non validi");
+  }
+
+  const [creatorToken, opponentToken] = await Promise.all([
+    getStravaAccessToken(creator),
+    getStravaAccessToken(opponent)
+  ]);
+
+  const [creatorActivities, opponentActivities] = await Promise.all([
+    fetchActivitiesInRange(creatorToken, startAt, endAt),
+    fetchActivitiesInRange(opponentToken, startAt, endAt)
+  ]);
+
+  const creatorProgress = computeArenaProgress(creatorActivities, challenge.type);
+  const opponentProgress = computeArenaProgress(opponentActivities, challenge.type);
+
+  const diff = creatorProgress - opponentProgress;
+  const epsilon = 0.0001;
+  let status = "resolved";
+  let winnerAddress = null;
+  if (Math.abs(diff) <= epsilon) {
+    status = "draw";
+  } else if (diff > 0) {
+    winnerAddress = creator;
+  } else {
+    winnerAddress = opponent;
+  }
+
+  await updateChallengeById(challenge.id, {
+    status,
+    winner_address: winnerAddress,
+    creator_progress: creatorProgress,
+    opponent_progress: opponentProgress,
+    start_at: startAt,
+    end_at: endAt,
+    resolved_at: new Date().toISOString()
+  });
+
+  return {
+    status,
+    winner_address: winnerAddress,
+    creator_progress: creatorProgress,
+    opponent_progress: opponentProgress,
+    end_at: endAt
+  };
+}
+
+async function mintArenaReward(amount, recipient) {
+  const normalized = Number(amount);
+  if (!Number.isFinite(normalized) || normalized <= 0) {
+    throw new Error("Importo non valido");
+  }
+  const provider = new ethers.JsonRpcProvider(process.env.POLYGON_RPC_URL);
+  const wallet = new ethers.Wallet(process.env.OWNER_PRIVATE_KEY, provider);
+  const contract = new ethers.Contract(
+    process.env.CONTRACT_ADDRESS,
+    CONTRACT_ABI,
+    wallet
+  );
+  const rounded = Math.round(normalized * 10000) / 10000;
+  const tx = await contract.mint(
+    recipient,
+    ethers.parseUnits(rounded.toString(), 18),
+    { gasLimit: 200000n }
+  );
+  return tx.wait();
 }
 
 async function mintReward(totalReward, recipient) {
@@ -766,6 +1032,129 @@ app.post("/user/level-up", (req, res) => {
   } catch (err) {
     console.error("Level up error:", err);
     return res.status(500).json({ error: "Errore interno" });
+  }
+});
+
+app.post("/arena/resolve", async (req, res) => {
+  try {
+    const challengeId = req.body?.challengeId;
+    if (!challengeId) {
+      return res.status(400).json({ error: "ChallengeId mancante" });
+    }
+    const challenge = await fetchChallengeById(challengeId);
+    if (!challenge) {
+      return res.status(404).json({ error: "Sfida non trovata" });
+    }
+    if (challenge.status !== "matched") {
+      return res.json({ status: challenge.status });
+    }
+    const result = await resolveArenaChallenge(challenge);
+    return res.json(result);
+  } catch (err) {
+    console.error("Arena resolve error:", err);
+    const message = err?.message || "Errore interno";
+    return res.status(500).json({ error: message });
+  }
+});
+
+app.post("/arena/claim", async (req, res) => {
+  try {
+    const challengeId = req.body?.challengeId;
+    const wallet = normalizeWallet(req.body?.walletAddress || req.query?.wallet);
+    if (!challengeId) {
+      return res.status(400).json({ error: "ChallengeId mancante" });
+    }
+    if (!wallet) {
+      return res.status(400).json({ error: "Wallet non valido" });
+    }
+
+    let challenge = await fetchChallengeById(challengeId);
+    if (!challenge) {
+      return res.status(404).json({ error: "Sfida non trovata" });
+    }
+
+    const { endAt } = getChallengeWindow(challenge);
+    if (
+      (challenge.status === "matched" || challenge.status === "active") &&
+      endAt &&
+      new Date(endAt).getTime() <= Date.now()
+    ) {
+      const resolved = await resolveArenaChallenge(challenge);
+      challenge = { ...challenge, ...resolved, status: resolved.status };
+    }
+
+    const status = challenge.status;
+    if (status !== "resolved" && status !== "draw") {
+      return res.status(409).json({ error: "Sfida non risolta" });
+    }
+
+    const creator = normalizeWallet(challenge.creator_address);
+    const opponent = normalizeWallet(challenge.opponent_address);
+    if (!creator || !opponent) {
+      return res.status(400).json({ error: "Wallet sfida non validi" });
+    }
+
+    const isCreator = wallet === creator;
+    const isOpponent = wallet === opponent;
+    const creatorClaimed = Boolean(challenge.creator_claimed);
+    const opponentClaimed = Boolean(challenge.opponent_claimed);
+
+    if (status === "resolved") {
+      const winner = normalizeWallet(challenge.winner_address);
+      if (!winner || winner !== wallet) {
+        return res.status(403).json({ error: "Non sei il vincitore" });
+      }
+      if ((isCreator && creatorClaimed) || (isOpponent && opponentClaimed)) {
+        return res.status(409).json({ error: "Premio gia riscattato" });
+      }
+    }
+
+    if (status === "draw") {
+      if (!isCreator && !isOpponent) {
+        return res.status(403).json({ error: "Non sei nella sfida" });
+      }
+      if ((isCreator && creatorClaimed) || (isOpponent && opponentClaimed)) {
+        return res.status(409).json({ error: "Rimborso gia riscattato" });
+      }
+    }
+
+    const stakeValue = Number(challenge.stake) || 0;
+    if (!Number.isFinite(stakeValue) || stakeValue <= 0) {
+      return res.status(400).json({ error: "Stake non valido" });
+    }
+
+    const payout =
+      status === "draw"
+        ? stakeValue * ARENA_DRAW_REFUND_RATE
+        : stakeValue * 2;
+
+    await mintArenaReward(payout, wallet);
+
+    const patch = {};
+    if (isCreator) {
+      patch.creator_claimed = true;
+    }
+    if (isOpponent) {
+      patch.opponent_claimed = true;
+    }
+    if (status === "resolved") {
+      patch.status = "claimed";
+    }
+    if (status === "draw") {
+      const creatorDone = isCreator ? true : creatorClaimed;
+      const opponentDone = isOpponent ? true : opponentClaimed;
+      if (creatorDone && opponentDone) {
+        patch.status = "claimed";
+      }
+    }
+
+    await updateChallengeById(challenge.id, patch);
+
+    return res.json({ status: "claimed", payout });
+  } catch (err) {
+    console.error("Arena claim error:", err);
+    const message = err?.message || "Errore interno";
+    return res.status(500).json({ error: message });
   }
 });
 
