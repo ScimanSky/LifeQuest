@@ -358,6 +358,31 @@ export default function ArenaPage() {
     const parsed = Number(formatEther(lifeBalance));
     return Number.isFinite(parsed) ? parsed : null;
   }, [address, lifeBalance]);
+
+  const buildTransferRequest = useCallback(
+    async (amount: bigint) => {
+      if (!address || !publicClient) {
+        throw new Error("Wallet non disponibile.");
+      }
+      const baseRequest = {
+        address: LIFE_TOKEN_ADDRESS,
+        abi: LIFE_TOKEN_ABI,
+        functionName: "transfer",
+        args: [BURN_ADDRESS, amount],
+        account: address
+      } as const;
+
+      try {
+        const { request } = await publicClient.simulateContract(baseRequest);
+        const estimatedGas = request.gas ?? 120000n;
+        return { ...request, gas: estimatedGas + estimatedGas / 5n };
+      } catch (error) {
+        console.error("Simulazione transfer fallita, uso gas fisso:", error);
+        return { ...baseRequest, gas: 120000n };
+      }
+    },
+    [address, publicClient]
+  );
   const fetchChallenges = useCallback(async () => {
     setIsChallengesLoading(true);
     setChallengesError(null);
@@ -729,13 +754,7 @@ export default function ArenaPage() {
       // NOTA: per scalare il saldo inviamo al burn address.
       const destinationAddress = BURN_ADDRESS;
 
-      const { request } = await publicClient.simulateContract({
-        address: LIFE_TOKEN_ADDRESS,
-        abi: LIFE_TOKEN_ABI,
-        functionName: "transfer",
-        args: [destinationAddress, stakeWei],
-        account: address
-      });
+      const request = await buildTransferRequest(stakeWei);
       const transferHash = await writeContractAsync(request);
 
       await publicClient.waitForTransactionReceipt({ hash: transferHash });
@@ -783,6 +802,7 @@ export default function ArenaPage() {
     challengeStake,
     challengeType,
     isChallengeValid,
+    buildTransferRequest,
     nativeBalance,
     publicClient,
     switchChainAsync,
@@ -836,13 +856,7 @@ export default function ArenaPage() {
 
       try {
         setAcceptStage("transferring");
-        const { request } = await publicClient.simulateContract({
-          address: LIFE_TOKEN_ADDRESS,
-          abi: LIFE_TOKEN_ABI,
-          functionName: "transfer",
-          args: [BURN_ADDRESS, stakeWei],
-          account: address
-        });
+        const request = await buildTransferRequest(stakeWei);
         const transferHash = await writeContractAsync(request);
         await publicClient.waitForTransactionReceipt({ hash: transferHash });
 
@@ -886,6 +900,7 @@ export default function ArenaPage() {
     },
     [
       address,
+      buildTransferRequest,
       chainId,
       fetchChallenges,
       nativeBalance,
