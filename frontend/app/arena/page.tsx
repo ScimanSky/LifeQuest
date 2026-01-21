@@ -775,6 +775,9 @@ export default function ArenaPage() {
                         };
                 const showStravaLink = duelType === "Corsa" || duelType === "Nuoto";
                 const isCreator = viewerIsCreator;
+                const rivalName = isCreator
+                  ? duel.rival.name
+                  : formatShortAddress(duel.creatorAddress);
                 const canAccept =
                   isConnected && !isCreator && duel.status === "active";
                 const isAccepting = acceptingChallengeId === duel.id;
@@ -904,7 +907,7 @@ export default function ArenaPage() {
 
                     <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
                       <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
-                        {duel.rival.name}
+                        {rivalName}
                       </p>
                       <p className="mt-2 text-lg font-semibold text-red-200">
                         {rivalProgress}/{totalGoal}
