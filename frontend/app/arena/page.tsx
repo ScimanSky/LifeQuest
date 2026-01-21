@@ -186,6 +186,43 @@ function formatGapLabel(type: string, gap: number, unit?: string | null) {
   return `${sign}${value} km`;
 }
 
+function buildMissingTokenMessage(
+  missingWallets: string[],
+  address?: string,
+  isPartial?: boolean
+) {
+  if (!missingWallets.length) {
+    return "Collega Strava per aggiornare i progressi.";
+  }
+  const normalized = address ? address.toLowerCase() : null;
+  const missingSelf = normalized
+    ? missingWallets.some(
+        (wallet) => wallet?.toLowerCase?.() === normalized
+      )
+    : false;
+  const missingOthers = normalized
+    ? missingWallets.filter(
+        (wallet) => wallet?.toLowerCase?.() !== normalized
+      )
+    : missingWallets;
+  if (missingSelf && missingOthers.length) {
+    return isPartial
+      ? "Modalita test: solo un wallet aggiorna i progressi."
+      : "Tu e l'avversario dovete collegare Strava.";
+  }
+  if (missingSelf) {
+    return isPartial
+      ? "Modalita test: i tuoi progressi non sono conteggiati."
+      : "Collega Strava per far aggiornare i progressi.";
+  }
+  if (missingOthers.length) {
+    return isPartial
+      ? "Modalita test: progressi avversario non disponibili."
+      : "Avversario non ha collegato Strava.";
+  }
+  return "Strava non collegato per aggiornare i progressi.";
+}
+
 function parseNumericInput(value: string) {
   const cleaned = value.replace(/[^\d.,-]/g, "").replace(",", ".");
   return Number(cleaned);
@@ -237,6 +274,7 @@ export default function ArenaPage() {
   const [claimStage, setClaimStage] = useState<"claiming" | null>(null);
   const [claimError, setClaimError] = useState<string | null>(null);
   const lastProgressSyncRef = useRef(0);
+  const [arenaWarnings, setArenaWarnings] = useState<Record<string, string>>({});
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
@@ -287,16 +325,36 @@ export default function ArenaPage() {
       const endTime = new Date(duel.endAt).getTime();
       if (Number.isNaN(endTime) || endTime > Date.now()) return;
       try {
-        await fetch(`${BACKEND_BASE_URL}/arena/resolve`, {
+        const response = await fetch(`${BACKEND_BASE_URL}/arena/resolve`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ challengeId: duel.id })
         });
+        const data = await response.json();
+        if (data?.status === "missing_tokens" || data?.status === "partial") {
+          const missing = Array.isArray(data.missing_wallets)
+            ? data.missing_wallets
+            : [];
+          setArenaWarnings((prev) => ({
+            ...prev,
+            [duel.id]: buildMissingTokenMessage(
+              missing,
+              address,
+              data?.status === "partial"
+            )
+          }));
+        } else {
+          setArenaWarnings((prev) => {
+            if (!prev[duel.id]) return prev;
+            const { [duel.id]: _, ...rest } = prev;
+            return rest;
+          });
+        }
       } catch (error) {
         console.error("Errore risoluzione sfida:", error);
       }
     },
-    []
+    [address]
   );
 
   const updateChallengeProgress = useCallback(async (duel: ArenaDuel) => {
@@ -304,15 +362,35 @@ export default function ArenaPage() {
     if (duel.status !== "matched") return;
     if (!duel.startAt) return;
     try {
-      await fetch(`${BACKEND_BASE_URL}/arena/progress`, {
+      const response = await fetch(`${BACKEND_BASE_URL}/arena/progress`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ challengeId: duel.id })
       });
+      const data = await response.json();
+      if (data?.status === "missing_tokens" || data?.status === "partial") {
+        const missing = Array.isArray(data.missing_wallets)
+          ? data.missing_wallets
+          : [];
+        setArenaWarnings((prev) => ({
+          ...prev,
+          [duel.id]: buildMissingTokenMessage(
+            missing,
+            address,
+            data?.status === "partial"
+          )
+        }));
+      } else {
+        setArenaWarnings((prev) => {
+          if (!prev[duel.id]) return prev;
+          const { [duel.id]: _, ...rest } = prev;
+          return rest;
+        });
+      }
     } catch (error) {
       console.error("Errore aggiornamento progressi:", error);
     }
-  }, []);
+  }, [address]);
 
   useEffect(() => {
     if (!challenges.length) return;
@@ -826,6 +904,7 @@ export default function ArenaPage() {
                   endTimestamp <= Date.now();
                 const isResolving =
                   duel.status === "matched" && Boolean(isExpired);
+                const warningMessage = arenaWarnings[duel.id];
                 const isWinner =
                   Boolean(address && duel.winnerAddress) &&
                   duel.winnerAddress?.toLowerCase() ===
@@ -952,6 +1031,12 @@ export default function ArenaPage() {
                     <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-amber-400/40 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold text-amber-200">
                       <Timer className="h-3 w-3" />
                       In attesa di risoluzione automatica...
+                    </div>
+                  ) : null}
+                  {warningMessage ? (
+                    <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-amber-400/40 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold text-amber-200">
+                      <Timer className="h-3 w-3" />
+                      {warningMessage}
                     </div>
                   ) : null}
 
