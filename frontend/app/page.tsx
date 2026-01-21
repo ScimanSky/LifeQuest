@@ -1279,6 +1279,10 @@ function HomeContent() {
             >
               Guida LifeQuest
             </Link>
+            <StatusBadge
+              label={isWalletConnected ? "Connesso" : "Disconnesso"}
+              tone={isWalletConnected ? "success" : "warning"}
+            />
             <div
               ref={walletMenuRef}
               className="relative"
@@ -1458,18 +1462,6 @@ function HomeContent() {
 
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:flex-1 lg:min-h-0">
           <aside className="col-span-12 lg:col-span-3 flex flex-col gap-4 lg:min-h-0">
-            <div
-              className={`flex items-center justify-between ${
-                isDisconnected ? "grayscale-[0.3] saturate-75" : ""
-              }`}
-            >
-              <p className="text-xs uppercase tracking-[0.35em] text-slate-500">STATUS</p>
-              <StatusBadge
-                label={isWalletConnected ? "Connesso" : "Disconnesso"}
-                tone={isWalletConnected ? "success" : "warning"}
-              />
-            </div>
-
             {isWalletConnected ? (
               <>
                 <div
