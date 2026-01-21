@@ -1502,7 +1502,7 @@ function HomeContent() {
                     <img
                       src={badge.image}
                       alt={badge.name}
-                      className={`h-full w-full object-contain scale-125 ${
+                      className={`h-full w-full object-contain scale-[1.5] ${
                         unlocked
                           ? `opacity-100 ${badge.glow} group-hover:shadow-[0_0_18px_rgba(251,146,60,0.6)]`
                           : "opacity-40 grayscale"
@@ -1546,7 +1546,7 @@ function HomeContent() {
                     <img
                       src={badge.image}
                       alt={badge.name}
-                      className={`h-full w-full object-contain scale-125 ${
+                      className={`h-full w-full object-contain scale-[1.5] ${
                         unlocked
                           ? `opacity-100 ${badge.glow} group-hover:shadow-[0_0_18px_rgba(251,146,60,0.6)]`
                           : "opacity-40 grayscale"
