@@ -240,6 +240,7 @@ function HomeContent() {
   const [showAllActivities, setShowAllActivities] = useState(false);
   const [isWalletMenuOpen, setIsWalletMenuOpen] = useState(false);
   const walletMenuRef = useRef<HTMLDivElement | null>(null);
+  const trophyCarouselRef = useRef<HTMLDivElement | null>(null);
   const [currentLevel, setCurrentLevel] = useState(1);
   const [showLevelUpGlow, setShowLevelUpGlow] = useState(false);
   const [userStats, setUserStats] = useState<UserStats | null>(null);
@@ -944,6 +945,55 @@ function HomeContent() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (!window.matchMedia("(max-width: 639px)").matches) return;
+    const container = trophyCarouselRef.current;
+    if (!container) return;
+    const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReduced) return;
+    let rafId = 0;
+    let lastTime = performance.now();
+    let isPaused = false;
+    let pauseTimeout: number | undefined;
+
+    const pause = () => {
+      isPaused = true;
+      if (pauseTimeout) {
+        window.clearTimeout(pauseTimeout);
+      }
+      pauseTimeout = window.setTimeout(() => {
+        isPaused = false;
+      }, 2000);
+    };
+
+    const handlePointerDown = () => {
+      pause();
+    };
+
+    container.addEventListener("pointerdown", handlePointerDown, { passive: true });
+
+    const tick = (time: number) => {
+      const delta = time - lastTime;
+      lastTime = time;
+      const maxScroll = container.scrollWidth - container.clientWidth;
+      if (maxScroll > 0 && !isPaused) {
+        const next = container.scrollLeft + delta * 0.03;
+        container.scrollLeft = next >= maxScroll ? 0 : next;
+      }
+      rafId = window.requestAnimationFrame(tick);
+    };
+
+    rafId = window.requestAnimationFrame(tick);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      container.removeEventListener("pointerdown", handlePointerDown);
+      if (pauseTimeout) {
+        window.clearTimeout(pauseTimeout);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
     const handler = (event: StorageEvent) => {
       if (event.key !== BALANCE_REFRESH_KEY) return;
       void refetchLifeBalance();
@@ -1263,7 +1313,17 @@ function HomeContent() {
             </div>
             <div>
               <p className="text-xs uppercase tracking-[0.3em] text-slate-500">LifeQuest</p>
-              <h1 className="text-2xl font-bold tracking-tight text-white">Dashboard</h1>
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-2xl font-bold tracking-tight text-white">Dashboard</h1>
+                {isWalletConnected ? (
+                  <span className="inline-flex items-center gap-2 rounded-full border border-cyan-400/40 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-semibold text-cyan-100 sm:text-[11px]">
+                    <span className="uppercase tracking-[0.2em] text-[9px] text-cyan-200 hidden sm:inline">
+                      Saldo
+                    </span>
+                    <span className="font-mono">{lifeBalanceFormatted} LIFE</span>
+                  </span>
+                ) : null}
+              </div>
             </div>
           </div>
           <div className="flex w-full flex-wrap items-center justify-end gap-3 sm:w-auto">
@@ -1398,18 +1458,10 @@ function HomeContent() {
                 </div>
               ) : null}
             </div>
-            {isWalletConnected ? (
-              <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-[11px] font-semibold text-cyan-100">
-                <span className="uppercase tracking-[0.2em] text-[10px] text-cyan-200 hidden sm:inline">
-                  Saldo
-                </span>
-                <span className="font-mono">{lifeBalanceFormatted} LIFE</span>
-              </div>
-            ) : null}
           </div>
         </header>
 
-        <div className="relative w-full rounded-3xl border border-white/10 bg-slate-900/40 p-3 shadow-2xl backdrop-blur-xl sm:p-4">
+        <div className="relative w-full rounded-3xl border border-white/10 bg-slate-900/40 p-2 shadow-2xl backdrop-blur-xl sm:p-3">
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.12),transparent_55%)]" />
           <div className="pointer-events-none absolute -top-24 right-10 h-40 w-40 rounded-full bg-amber-400/10 blur-3xl" />
           <div className="flex items-center justify-between">
@@ -1419,7 +1471,10 @@ function HomeContent() {
             <span className="hidden text-[11px] text-slate-400 sm:inline">Bacheca</span>
           </div>
           <div className="mt-2 sm:hidden">
-            <div className="no-scrollbar flex gap-2 overflow-x-auto pb-2 snap-x snap-mandatory">
+            <div
+              ref={trophyCarouselRef}
+              className="no-scrollbar flex gap-2 overflow-x-auto pb-2 snap-x snap-mandatory"
+            >
               {trophyBadges.map((badge) => {
                 const unlocked = Boolean(
                   resolvedBadgeUnlocks[badge.id as keyof typeof resolvedBadgeUnlocks]
@@ -1440,7 +1495,7 @@ function HomeContent() {
                     {unlocked ? (
                       <span className="pointer-events-none absolute -top-8 -right-8 h-20 w-20 rounded-full bg-amber-400/20 blur-2xl" />
                     ) : null}
-                    <div className="mx-auto flex aspect-square w-full items-center justify-center rounded-2xl bg-slate-950/70 ring-1 ring-white/5 p-2">
+                    <div className="mx-auto flex aspect-square w-24 items-center justify-center rounded-2xl bg-slate-950/70 ring-1 ring-white/5 p-2 sm:w-28">
                       <img
                         src={badge.image}
                         alt={badge.name}
@@ -1484,7 +1539,7 @@ function HomeContent() {
                   {unlocked ? (
                     <span className="pointer-events-none absolute -top-8 -right-8 h-20 w-20 rounded-full bg-amber-400/20 blur-2xl" />
                   ) : null}
-                  <div className="mx-auto flex aspect-square w-full items-center justify-center rounded-2xl bg-slate-950/70 ring-1 ring-white/5 p-2">
+                  <div className="mx-auto flex aspect-square w-24 items-center justify-center rounded-2xl bg-slate-950/70 ring-1 ring-white/5 p-2 sm:w-28 lg:w-32">
                     <img
                       src={badge.image}
                       alt={badge.name}
