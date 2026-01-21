@@ -50,7 +50,13 @@ const ARENA_GYM_TYPES = new Set([
   ...MINDFULNESS_TYPES,
   "Iron Protocol"
 ]);
-const MINDFULNESS_MIN_SECONDS = 600;
+const MINDFULNESS_MIN_SECONDS = 0;
+const XP_CHALLENGE_STATUSES = [
+  "completed",
+  "claim_completato",
+  "resolved",
+  "claimed"
+];
 const LEVEL_XP = 2000;
 const WEEKLY_GOALS = {
   run: 2,
@@ -450,6 +456,42 @@ function computeXpTotal(activities, db) {
     return sum + (Number(bonus?.reward) || 0);
   }, 0);
   return activityXp + bonusXp;
+}
+
+async function fetchChallengesForWallet(wallet) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return [];
+  try {
+    const statusList = XP_CHALLENGE_STATUSES.join(",");
+    const response = await axios.get(`${SUPABASE_URL}/rest/v1/challenges`, {
+      headers: supabaseHeaders(),
+      params: {
+        select:
+          "id,creator_address,opponent_address,creator_progress,opponent_progress,status",
+        or: `(creator_address.eq.${wallet},opponent_address.eq.${wallet})`,
+        status: `in.(${statusList})`
+      }
+    });
+    return Array.isArray(response.data) ? response.data : [];
+  } catch (err) {
+    console.error("Errore lettura challenges:", err);
+    return [];
+  }
+}
+
+function computeChallengeXp(wallet, challenges) {
+  const target = normalizeWallet(wallet);
+  if (!target) return 0;
+  return (challenges || []).reduce((sum, challenge) => {
+    const isCreator =
+      normalizeWallet(challenge?.creator_address) === target;
+    const isOpponent =
+      normalizeWallet(challenge?.opponent_address) === target;
+    if (!isCreator && !isOpponent) return sum;
+    const progress = isCreator
+      ? Number(challenge?.creator_progress) || 0
+      : Number(challenge?.opponent_progress) || 0;
+    return sum + progress;
+  }, 0);
 }
 
 function getWeekBounds(reference) {
@@ -1287,6 +1329,8 @@ app.get("/user/stats", async (req, res) => {
     const balanceWei = await fetchBalance(wallet);
     const rank = computeRank(balanceWei);
     const activities = await loadWalletActivities(wallet);
+    const challengeRows = await fetchChallengesForWallet(wallet);
+    const challengeRows = await fetchChallengesForWallet(wallet);
 
     const dbStore = loadDatabase();
     const db = getWalletDb(dbStore, wallet);
@@ -1295,7 +1339,9 @@ app.get("/user/stats", async (req, res) => {
       : [];
     const badges = db.badges && typeof db.badges === "object" ? db.badges : {};
 
-    const xpTotal = computeXpTotal(activities, db);
+    const xpFromChallenges = computeChallengeXp(wallet, challengeRows);
+    const xpTotal =
+      xpFromChallenges > 0 ? xpFromChallenges : computeXpTotal(activities, db);
     const currentLevel = Number(db.level) || 1;
     const baseXp = Math.max(0, (currentLevel - 1) * LEVEL_XP);
     const xpCurrentRaw = Math.max(0, xpTotal - baseXp);
@@ -1436,7 +1482,9 @@ app.post("/user/level-up", async (req, res) => {
     const activities = await loadWalletActivities(wallet);
     const dbStore = loadDatabase();
     const db = getWalletDb(dbStore, wallet);
-    const xpTotal = computeXpTotal(activities, db);
+    const xpFromChallenges = computeChallengeXp(wallet, challengeRows);
+    const xpTotal =
+      xpFromChallenges > 0 ? xpFromChallenges : computeXpTotal(activities, db);
     const currentLevel = Number(db.level) || 1;
     const baseXp = Math.max(0, (currentLevel - 1) * LEVEL_XP);
     const xpCurrent = Math.max(0, xpTotal - baseXp);

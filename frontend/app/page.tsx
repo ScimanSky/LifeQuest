@@ -1446,6 +1446,13 @@ function HomeContent() {
                     </span>
                     <span className="font-mono">{levelProgress}%</span>
                   </div>
+                  <p className="mt-2 text-[11px] text-slate-400">
+                    Mancano{" "}
+                    <span className="font-mono text-slate-200">
+                      {Math.max(0, nextLevelXp - xpCurrent)}
+                    </span>{" "}
+                    XP al prossimo livello
+                  </p>
                   {isWalletConnected ? (
                     <button
                       type="button"
@@ -1478,9 +1485,9 @@ function HomeContent() {
                   </div>
                   <div className="mt-4 transition-all duration-500">
                     <p className="text-xs uppercase tracking-[0.3em] text-slate-500">
-                      Bacheca Trofei
+                      I Tuoi Trofei
                     </p>
-                    <div className="mt-3 grid grid-cols-4 gap-2">
+                    <div className="mt-3 grid grid-cols-2 gap-3">
                       {trophyBadges.map((badge) => {
                         const unlocked = Boolean(
                           resolvedBadgeUnlocks[badge.id as keyof typeof resolvedBadgeUnlocks]
@@ -1488,23 +1495,29 @@ function HomeContent() {
                         return (
                           <div
                             key={badge.id}
-                            className={`group relative flex items-center justify-center rounded-2xl border border-white/10 bg-slate-950/60 p-2 transition-all duration-500 ${
+                            className={`group relative rounded-2xl border border-white/10 bg-slate-950/60 p-3 transition-all duration-500 ${
                               unlocked ? "hover:shadow-[0_0_20px_rgba(251,146,60,0.45)]" : ""
                             }`}
                           >
-                            <img
-                              src={badge.image}
-                              alt={badge.name}
-                              className={`h-10 w-10 ${
-                                unlocked
-                                  ? `opacity-100 ${badge.glow} group-hover:shadow-[0_0_18px_rgba(251,146,60,0.6)]`
-                                  : "opacity-40 grayscale"
-                              }`}
-                              loading="lazy"
-                            />
-                            <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 w-36 -translate-x-1/2 rounded-xl border border-white/10 bg-slate-950/90 px-3 py-2 text-center text-[11px] text-slate-200 opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
-                              <p className="font-semibold">{badge.name}</p>
-                              <p className="mt-1 text-slate-400">{badge.requirement}</p>
+                            <div className="flex items-center gap-3">
+                              <img
+                                src={badge.image}
+                                alt={badge.name}
+                                className={`h-10 w-10 ${
+                                  unlocked
+                                    ? `opacity-100 ${badge.glow} group-hover:shadow-[0_0_18px_rgba(251,146,60,0.6)]`
+                                    : "opacity-40 grayscale"
+                                }`}
+                                loading="lazy"
+                              />
+                              <div className="text-left">
+                                <p className="text-sm font-semibold text-white">
+                                  {badge.name}
+                                </p>
+                                <p className="mt-1 text-[11px] text-slate-400">
+                                  {unlocked ? "Sbloccato" : badge.requirement}
+                                </p>
+                              </div>
                             </div>
                           </div>
                         );
