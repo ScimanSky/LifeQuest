@@ -1498,16 +1498,16 @@ function HomeContent() {
                     {unlocked ? (
                       <span className="pointer-events-none absolute -top-8 -right-8 h-20 w-20 rounded-full bg-amber-400/20 blur-2xl" />
                     ) : null}
-                  <div className="mx-auto flex aspect-square w-24 items-center justify-center overflow-hidden rounded-2xl bg-slate-950/70 ring-1 ring-white/5 p-1 sm:w-28">
+                  <div className="mx-auto flex aspect-square w-24 items-center justify-center overflow-hidden rounded-2xl bg-slate-950/70 ring-1 ring-white/5 p-0 sm:w-28">
                     <img
                       src={badge.image}
                       alt={badge.name}
-                      className={`h-full w-full object-contain scale-125 ${
+                      className={`h-full w-full object-contain ${
                         unlocked
                           ? `opacity-100 ${badge.glow} group-hover:shadow-[0_0_18px_rgba(251,146,60,0.6)]`
                           : "opacity-40 grayscale"
                       }`}
-                        loading="lazy"
+                      loading="lazy"
                       />
                     </div>
                     <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-xl border border-white/10 bg-slate-950/90 px-2 py-1 text-center text-[10px] text-slate-200 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
@@ -1542,11 +1542,11 @@ function HomeContent() {
                   {unlocked ? (
                     <span className="pointer-events-none absolute -top-8 -right-8 h-20 w-20 rounded-full bg-amber-400/20 blur-2xl" />
                   ) : null}
-                  <div className="mx-auto flex aspect-square w-24 items-center justify-center overflow-hidden rounded-2xl bg-slate-950/70 ring-1 ring-white/5 p-1 sm:w-28 lg:w-32">
+                  <div className="mx-auto flex aspect-square w-24 items-center justify-center overflow-hidden rounded-2xl bg-slate-950/70 ring-1 ring-white/5 p-0 sm:w-28 lg:w-32">
                     <img
                       src={badge.image}
                       alt={badge.name}
-                      className={`h-full w-full object-contain scale-125 ${
+                      className={`h-full w-full object-contain ${
                         unlocked
                           ? `opacity-100 ${badge.glow} group-hover:shadow-[0_0_18px_rgba(251,146,60,0.6)]`
                           : "opacity-40 grayscale"
