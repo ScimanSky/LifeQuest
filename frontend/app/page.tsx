@@ -1409,7 +1409,7 @@ function HomeContent() {
           </div>
         </header>
 
-        <div className="relative w-full rounded-3xl border border-white/10 bg-slate-900/40 p-3 shadow-2xl backdrop-blur-xl sm:p-4 lg:max-w-[980px]">
+        <div className="relative w-full rounded-3xl border border-white/10 bg-slate-900/40 p-3 shadow-2xl backdrop-blur-xl sm:p-4">
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.12),transparent_55%)]" />
           <div className="pointer-events-none absolute -top-24 right-10 h-40 w-40 rounded-full bg-amber-400/10 blur-3xl" />
           <div className="flex items-center justify-between">
@@ -1468,7 +1468,7 @@ function HomeContent() {
             {isWalletConnected ? (
               <>
                 <div
-                  className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-4 transition-all duration-500 ${
+                  className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-4 transition-all duration-500 flex flex-col flex-1 ${
                     showLevelUpGlow
                       ? "ring-2 ring-amber-400/60 shadow-[0_0_30px_rgba(251,191,36,0.4)]"
                       : ""
@@ -1526,7 +1526,7 @@ function HomeContent() {
                     </button>
                   ) : null}
 
-                  <div className="mt-4 flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/60 p-3 transition-all duration-500">
+                  <div className="mt-4 flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/60 p-3 transition-all duration-500 mt-auto">
                     <div
                       className={`flex h-10 w-10 items-center justify-center rounded-xl ${
                         ignitionUnlocked ? "bg-cyan-500/20 text-cyan-200" : "bg-slate-800/60 text-slate-500"
