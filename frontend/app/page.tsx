@@ -950,8 +950,6 @@ function HomeContent() {
     if (!container) return;
     const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (prefersReduced) return;
-    let rafId = 0;
-    let lastTime = performance.now();
     let isPaused = false;
     let pauseTimeout: number | undefined;
 
@@ -962,7 +960,7 @@ function HomeContent() {
       }
       pauseTimeout = window.setTimeout(() => {
         isPaused = false;
-      }, 2000);
+      }, 2500);
     };
 
     const handlePointerDown = () => {
@@ -971,20 +969,25 @@ function HomeContent() {
 
     container.addEventListener("pointerdown", handlePointerDown, { passive: true });
 
-    const tick = (time: number) => {
-      const delta = time - lastTime;
-      lastTime = time;
+    const step = () => {
+      if (isPaused) return;
       const maxScroll = container.scrollWidth - container.clientWidth;
-      if (maxScroll > 0 && !isPaused) {
-        const next = container.scrollLeft + delta * 0.03;
-        container.scrollLeft = next >= maxScroll ? 0 : next;
-      }
-      rafId = window.requestAnimationFrame(tick);
+      if (maxScroll <= 0) return;
+      const card = container.querySelector<HTMLElement>("[data-trophy-card]");
+      const gapValue = Number.parseFloat(
+        getComputedStyle(container).columnGap || getComputedStyle(container).gap || "0"
+      );
+      const increment = (card?.offsetWidth ?? 140) + (Number.isFinite(gapValue) ? gapValue : 0);
+      const next = container.scrollLeft + increment;
+      container.scrollTo({
+        left: next >= maxScroll ? 0 : next,
+        behavior: "smooth"
+      });
     };
 
-    rafId = window.requestAnimationFrame(tick);
+    const intervalId = window.setInterval(step, 2600);
     return () => {
-      window.cancelAnimationFrame(rafId);
+      window.clearInterval(intervalId);
       container.removeEventListener("pointerdown", handlePointerDown);
       if (pauseTimeout) {
         window.clearTimeout(pauseTimeout);
