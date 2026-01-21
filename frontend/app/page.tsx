@@ -1566,71 +1566,73 @@ function HomeContent() {
           </div>
         </div>
 
-        <section className="grid grid-cols-1 gap-3 lg:grid-cols-12 lg:flex-1 lg:min-h-0 lg:items-stretch">
-          <aside className="col-span-12 lg:col-span-3 flex flex-col gap-3 lg:min-h-0 lg:h-full">
+        <section className="flex flex-col gap-3 lg:flex-1 lg:min-h-0 lg:flex-row lg:items-stretch">
+          <aside className="flex flex-col gap-3 lg:min-h-0 lg:h-full lg:flex-[3] lg:min-w-0">
             {isWalletConnected ? (
               <>
                 <div
-                  className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-4 transition-all duration-500 flex flex-col flex-1 h-full lg:min-h-[520px] ${
+                  className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-4 transition-all duration-500 flex flex-col flex-1 h-full ${
                     showLevelUpGlow
                       ? "ring-2 ring-amber-400/60 shadow-[0_0_30px_rgba(251,191,36,0.4)]"
                       : ""
                   }`}
                 >
-                  <p className="text-xs uppercase tracking-[0.3em] text-cyan-300">Livello</p>
-                  <div className="mt-2 flex items-center justify-between gap-3">
-                    <h2 className="text-xl font-semibold text-white">
-                      Livello <span className="font-mono">{currentLevel}</span>
-                    </h2>
-                    <span className="rounded-full border border-white/10 bg-slate-900/60 px-3 py-1 text-[11px] font-semibold text-slate-200">
-                      {levelRank}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-xs text-slate-400">
-                    XP{" "}
-                    <span className="font-mono text-slate-100">{xpCurrent}</span>{" "}
-                    / <span className="font-mono">{nextLevelXp}</span>
-                  </p>
-                  <div
-                    className={`mt-4 h-2 w-full overflow-hidden rounded-full bg-slate-800/80 ${
-                      isNearGoal ? "ring-1 ring-cyan-400/50 animate-pulse" : ""
-                    }`}
-                  >
+                  <div className="space-y-2">
+                    <p className="text-xs uppercase tracking-[0.3em] text-cyan-300">Livello</p>
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="text-xl font-semibold text-white">
+                        Livello <span className="font-mono">{currentLevel}</span>
+                      </h2>
+                      <span className="rounded-full border border-white/10 bg-slate-900/60 px-3 py-1 text-[11px] font-semibold text-slate-200">
+                        {levelRank}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      XP{" "}
+                      <span className="font-mono text-slate-100">{xpCurrent}</span>{" "}
+                      / <span className="font-mono">{nextLevelXp}</span>
+                    </p>
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-purple-500 via-cyan-400 to-cyan-300 shadow-[0_0_12px_rgba(34,211,238,0.7)]"
-                      style={{ width: `${levelProgress}%` }}
-                    />
-                  </div>
-                  <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400">
-                    <span>
-                      Obiettivo: <span className="font-mono">{nextLevelXp}</span> XP
-                    </span>
-                    <span className="font-mono">{levelProgress}%</span>
-                  </div>
-                  <p className="mt-2 text-[11px] text-slate-400">
-                    Mancano{" "}
-                    <span className="font-mono text-slate-200">
-                      {Math.max(0, nextLevelXp - xpCurrent)}
-                    </span>{" "}
-                    XP al prossimo livello
-                  </p>
-                  {isWalletConnected ? (
-                    <button
-                      type="button"
-                      onClick={handleLevelUp}
-                      disabled={!canLevelUp || isLevelingUp}
-                      className={`mt-4 flex w-full items-center justify-center rounded-xl px-4 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                        canLevelUp && !isLevelingUp
-                          ? "border border-cyan-400/50 bg-cyan-500/10 text-cyan-100 hover:border-cyan-300/70 hover:text-cyan-50"
-                          : "border border-slate-700/70 bg-slate-900/60 text-slate-400"
+                      className={`h-2 w-full overflow-hidden rounded-full bg-slate-800/80 ${
+                        isNearGoal ? "ring-1 ring-cyan-400/50 animate-pulse" : ""
                       }`}
                     >
-                      {levelUpLabel}
-                    </button>
-                  ) : null}
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-purple-500 via-cyan-400 to-cyan-300 shadow-[0_0_12px_rgba(34,211,238,0.7)]"
+                        style={{ width: `${levelProgress}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-slate-400">
+                      <span>
+                        Obiettivo: <span className="font-mono">{nextLevelXp}</span> XP
+                      </span>
+                      <span className="font-mono">{levelProgress}%</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Mancano{" "}
+                      <span className="font-mono text-slate-200">
+                        {Math.max(0, nextLevelXp - xpCurrent)}
+                      </span>{" "}
+                      XP al prossimo livello
+                    </p>
+                    {isWalletConnected ? (
+                      <button
+                        type="button"
+                        onClick={handleLevelUp}
+                        disabled={!canLevelUp || isLevelingUp}
+                        className={`mt-2 flex w-full items-center justify-center rounded-xl px-4 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                          canLevelUp && !isLevelingUp
+                            ? "border border-cyan-400/50 bg-cyan-500/10 text-cyan-100 hover:border-cyan-300/70 hover:text-cyan-50"
+                            : "border border-slate-700/70 bg-slate-900/60 text-slate-400"
+                        }`}
+                      >
+                        {levelUpLabel}
+                      </button>
+                    ) : null}
+                  </div>
 
                   <div className="mt-auto">
-                    <div className="mt-3 flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/60 p-3 transition-all duration-500">
+                    <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/60 p-3 transition-all duration-500">
                       <div
                         className={`flex h-10 w-10 items-center justify-center rounded-xl ${
                           ignitionUnlocked
@@ -1697,9 +1699,9 @@ function HomeContent() {
             )}
           </aside>
 
-          <section className="col-span-12 lg:col-span-5 flex flex-col gap-3 lg:min-h-0 lg:h-full">
+          <section className="flex flex-col gap-3 lg:min-h-0 lg:h-full lg:flex-[5] lg:min-w-0">
             <div
-              className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-3 sm:p-4 lg:p-3 flex flex-col flex-1 min-h-0 transition-all duration-500 h-full lg:min-h-[520px] ${
+              className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-3 sm:p-4 lg:p-3 flex flex-col flex-1 min-h-0 transition-all duration-500 h-full ${
                 isDisconnected ? "grayscale-[0.3] saturate-75" : ""
               }`}
             >
@@ -1885,9 +1887,9 @@ function HomeContent() {
             </div>
           </section>
 
-          <section className="col-span-12 lg:col-span-4 flex flex-col gap-3 lg:min-h-0 lg:h-full">
+          <section className="flex flex-col gap-3 lg:min-h-0 lg:h-full lg:flex-[4] lg:min-w-0">
             <div
-              className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-4 flex flex-col flex-1 h-full transition-all duration-500 lg:overflow-hidden lg:min-h-[520px] ${
+              className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-4 flex flex-col flex-1 h-full transition-all duration-500 lg:overflow-hidden ${
                 isDisconnected ? "grayscale-[0.3] saturate-75" : ""
               } ${isActivitiesExpanded ? "" : "lg:h-full"}`}
             >
