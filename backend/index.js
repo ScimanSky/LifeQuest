@@ -155,6 +155,81 @@ async function deleteStravaToken(wallet) {
   return rows.length > 0;
 }
 
+function mapStravaActivityRow(row) {
+  const id = normalizeActivityId(row?.activity_id);
+  if (!id) return null;
+  return {
+    id,
+    type: row?.type ?? null,
+    icon: row?.icon ?? null,
+    distance: Number(row?.distance) || 0,
+    duration: Number(row?.duration) || 0,
+    reward: Number(row?.reward) || 0,
+    date: row?.date ?? null
+  };
+}
+
+async function fetchMintedActivities(wallet) {
+  ensureSupabaseConfig();
+  const response = await axios.get(`${SUPABASE_URL}/rest/v1/strava_activities`, {
+    headers: supabaseHeaders(),
+    params: {
+      wallet_address: `eq.${wallet}`,
+      select:
+        "activity_id,type,icon,distance,duration,reward,date"
+    }
+  });
+  const rows = Array.isArray(response.data) ? response.data : [];
+  return rows.map(mapStravaActivityRow).filter(Boolean);
+}
+
+async function upsertMintedActivities(wallet, activities) {
+  ensureSupabaseConfig();
+  const payload = activities
+    .map((activity) => {
+      const id = normalizeActivityId(activity?.id);
+      if (!id) return null;
+      return {
+        wallet_address: wallet,
+        activity_id: id,
+        type: activity?.type ?? null,
+        icon: activity?.icon ?? null,
+        distance: Number(activity?.distance) || 0,
+        duration: Number(activity?.duration) || 0,
+        reward: Number(activity?.reward) || 0,
+        date: activity?.date ?? null
+      };
+    })
+    .filter(Boolean);
+
+  if (!payload.length) return;
+  await axios.post(
+    `${SUPABASE_URL}/rest/v1/strava_activities?on_conflict=wallet_address,activity_id`,
+    payload,
+    {
+      headers: supabaseHeaders("resolution=merge-duplicates,return=representation")
+    }
+  );
+}
+
+async function loadWalletActivities(wallet) {
+  const store = loadPaidActivitiesStore();
+  const localActivities = getWalletActivities(store, wallet);
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    return localActivities;
+  }
+  try {
+    const dbActivities = await fetchMintedActivities(wallet);
+    if (dbActivities.length === 0 && localActivities.length > 0) {
+      await upsertMintedActivities(wallet, localActivities);
+    }
+    return mergeActivities(localActivities, dbActivities);
+  } catch (err) {
+    console.error("Errore lettura strava_activities:", err);
+    return localActivities;
+  }
+}
+
 function loadPaidActivitiesStore() {
   try {
     if (!fs.existsSync(PAID_ACTIVITIES_PATH)) {
@@ -195,6 +270,27 @@ function getWalletActivities(store, wallet) {
   if (!store || !store.wallets) return [];
   const list = store.wallets[wallet];
   return Array.isArray(list) ? list : [];
+}
+
+function normalizeActivityId(activityId) {
+  if (activityId === null || activityId === undefined) return null;
+  const text = String(activityId).trim();
+  return text.length ? text : null;
+}
+
+function mergeActivities(primary, secondary) {
+  const map = new Map();
+  for (const activity of primary || []) {
+    const id = normalizeActivityId(activity?.id);
+    if (!id) continue;
+    map.set(id, { ...activity, id });
+  }
+  for (const activity of secondary || []) {
+    const id = normalizeActivityId(activity?.id);
+    if (!id) continue;
+    map.set(id, { ...activity, id });
+  }
+  return Array.from(map.values());
 }
 
 function createDefaultWalletDb() {
@@ -592,7 +688,8 @@ function evaluateActivities(activities, paidIds) {
   let totalReward = 0;
 
   for (const activity of activities) {
-    if (!activity || !activity.id || paidIds.has(activity.id)) {
+    const activityId = normalizeActivityId(activity?.id);
+    if (!activity || !activityId || paidIds.has(activityId)) {
       continue;
     }
 
@@ -621,7 +718,7 @@ function evaluateActivities(activities, paidIds) {
     }
 
     pendingActivities.push({
-      id: activity.id,
+      id: activityId,
       type: mappedType,
       icon: mappedIcon,
       distance: distanceMeters,
@@ -878,9 +975,12 @@ app.get("/activities", (req, res) => {
   if (!wallet) {
     return res.status(400).json({ error: "Wallet non valido" });
   }
-  const store = loadPaidActivitiesStore();
-  const activities = getWalletActivities(store, wallet);
-  return res.json(activities);
+  loadWalletActivities(wallet)
+    .then((activities) => res.json(activities))
+    .catch((err) => {
+      console.error("Activities error:", err);
+      return res.status(500).json({ error: "Errore interno" });
+    });
 });
 
 app.get("/user/stats", async (req, res) => {
@@ -891,8 +991,7 @@ app.get("/user/stats", async (req, res) => {
     }
     const balanceWei = await fetchBalance(wallet);
     const rank = computeRank(balanceWei);
-    const store = loadPaidActivitiesStore();
-    const activities = getWalletActivities(store, wallet);
+    const activities = await loadWalletActivities(wallet);
 
     const dbStore = loadDatabase();
     const db = getWalletDb(dbStore, wallet);
@@ -967,8 +1066,14 @@ app.post("/strava/sync", async (req, res) => {
 
     const activities = await fetchRecentActivities(accessToken);
     const store = loadPaidActivitiesStore();
-    const walletActivities = getWalletActivities(store, wallet);
-    const paidIds = new Set(walletActivities.map((activity) => activity.id));
+    const localActivities = getWalletActivities(store, wallet);
+    const dbActivities = await loadWalletActivities(wallet);
+    const walletActivities = mergeActivities(localActivities, dbActivities);
+    const paidIds = new Set(
+      walletActivities
+        .map((activity) => normalizeActivityId(activity?.id))
+        .filter(Boolean)
+    );
 
     const dbStore = loadDatabase();
     const db = getWalletDb(dbStore, wallet);
@@ -997,6 +1102,9 @@ app.post("/strava/sync", async (req, res) => {
     const updatedActivities = walletActivities.concat(pendingActivities);
     store.wallets[wallet] = updatedActivities;
     savePaidActivitiesStore(store);
+    if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+      await upsertMintedActivities(wallet, pendingActivities);
+    }
 
     const stats = computeBadgeStats(activities, db.stats);
     db.stats = stats;
@@ -1017,14 +1125,13 @@ app.post("/strava/sync", async (req, res) => {
   }
 });
 
-app.post("/user/level-up", (req, res) => {
+app.post("/user/level-up", async (req, res) => {
   try {
     const wallet = normalizeWallet(req.body?.walletAddress || req.query?.wallet);
     if (!wallet) {
       return res.status(400).json({ error: "Wallet non valido" });
     }
-    const store = loadPaidActivitiesStore();
-    const activities = getWalletActivities(store, wallet);
+    const activities = await loadWalletActivities(wallet);
     const dbStore = loadDatabase();
     const db = getWalletDb(dbStore, wallet);
     const xpTotal = computeXpTotal(activities, db);
@@ -1239,8 +1346,14 @@ app.get("/strava/callback", async (req, res) => {
 
     const activities = await fetchRecentActivities(accessToken);
     const store = loadPaidActivitiesStore();
-    const walletActivities = getWalletActivities(store, wallet);
-    const paidIds = new Set(walletActivities.map((activity) => activity.id));
+    const localActivities = getWalletActivities(store, wallet);
+    const dbActivities = await loadWalletActivities(wallet);
+    const walletActivities = mergeActivities(localActivities, dbActivities);
+    const paidIds = new Set(
+      walletActivities
+        .map((activity) => normalizeActivityId(activity?.id))
+        .filter(Boolean)
+    );
 
     const dbStore = loadDatabase();
     const db = getWalletDb(dbStore, wallet);
@@ -1265,6 +1378,9 @@ app.get("/strava/callback", async (req, res) => {
     const updatedActivities = walletActivities.concat(pendingActivities);
     store.wallets[wallet] = updatedActivities;
     savePaidActivitiesStore(store);
+    if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+      await upsertMintedActivities(wallet, pendingActivities);
+    }
 
     const stats = computeBadgeStats(activities, db.stats);
     db.stats = stats;
