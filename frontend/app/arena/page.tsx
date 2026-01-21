@@ -706,7 +706,8 @@ export default function ArenaPage() {
 
     // Conversione per Blockchain
     const stakeWei = parseEther(stakeValue.toString());
-    if (lifeBalance !== undefined && lifeBalance < stakeWei) {
+    const latestBalance = await refetchLifeBalance();
+    if (latestBalance.data !== undefined && latestBalance.data < stakeWei) {
       setSaveError("Saldo LIFE insufficiente.");
       return;
     }
@@ -772,9 +773,9 @@ export default function ArenaPage() {
     challengeStake,
     challengeType,
     isChallengeValid,
-    lifeBalance,
     nativeBalance,
     publicClient,
+    refetchLifeBalance,
     switchChainAsync,
     writeContractAsync
     // Rimosso refetchAllowance e allowanceValue perche non servono piu
@@ -805,7 +806,8 @@ export default function ArenaPage() {
         return;
       }
       const stakeWei = parseEther(stakeValue.toString());
-      if (lifeBalance !== undefined && lifeBalance < stakeWei) {
+      const latestBalance = await refetchLifeBalance();
+      if (latestBalance.data !== undefined && latestBalance.data < stakeWei) {
         setAcceptError("Saldo LIFE insufficiente.");
         return;
       }
@@ -867,9 +869,9 @@ export default function ArenaPage() {
       address,
       chainId,
       fetchChallenges,
-      lifeBalance,
       nativeBalance,
       publicClient,
+      refetchLifeBalance,
       switchChainAsync,
       writeContractAsync
     ]
