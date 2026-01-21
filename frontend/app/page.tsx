@@ -1273,9 +1273,9 @@ function HomeContent() {
             <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
               I Tuoi Trofei
             </p>
-            <span className="text-[11px] text-slate-400">Bacheca</span>
+            <span className="hidden text-[11px] text-slate-400 sm:inline">Bacheca</span>
           </div>
-          <div className="mt-3 flex gap-2 overflow-x-auto pb-2 snap-x snap-mandatory sm:gap-3 sm:pb-3">
+          <div className="mt-3 flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory">
             {trophyBadges.map((badge) => {
               const unlocked = Boolean(
                 resolvedBadgeUnlocks[badge.id as keyof typeof resolvedBadgeUnlocks]
@@ -1283,7 +1283,7 @@ function HomeContent() {
               return (
                 <div
                   key={badge.id}
-                  className={`group relative min-w-[140px] snap-start overflow-hidden rounded-2xl border border-white/10 bg-slate-900/60 p-2.5 text-center transition-all duration-500 sm:min-w-[160px] sm:p-3 ${
+                  className={`group relative min-w-[180px] snap-start overflow-hidden rounded-2xl border border-white/10 bg-slate-900/60 p-3 text-center transition-all duration-500 sm:min-w-[200px] sm:p-4 ${
                     unlocked
                       ? "hover:-translate-y-0.5 hover:shadow-[0_0_28px_rgba(251,146,60,0.45)]"
                       : "opacity-90"
@@ -1296,11 +1296,11 @@ function HomeContent() {
                   {unlocked ? (
                     <span className="pointer-events-none absolute -top-8 -right-8 h-20 w-20 rounded-full bg-amber-400/20 blur-2xl" />
                   ) : null}
-                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-950/70 ring-1 ring-white/5 sm:h-16 sm:w-16">
+                  <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-slate-950/70 ring-1 ring-white/5 sm:h-24 sm:w-24">
                     <img
                       src={badge.image}
                       alt={badge.name}
-                      className={`h-10 w-10 sm:h-12 sm:w-12 ${
+                      className={`h-16 w-16 sm:h-20 sm:w-20 ${
                         unlocked
                           ? `opacity-100 ${badge.glow} group-hover:shadow-[0_0_18px_rgba(251,146,60,0.6)]`
                           : "opacity-40 grayscale"
@@ -1308,7 +1308,7 @@ function HomeContent() {
                       loading="lazy"
                     />
                   </div>
-                  <p className="mt-2 text-xs font-semibold text-white sm:mt-3 sm:text-sm">
+                  <p className="mt-3 text-sm font-semibold text-white sm:text-base">
                     {badge.name}
                   </p>
                   <p className="mt-1 text-[10px] text-slate-400 sm:text-[11px]">
