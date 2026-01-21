@@ -37,7 +37,7 @@ const LEVEL_UP_URL = `${BACKEND_BASE_URL}/user/level-up`;
 const SEEN_BADGES_KEY = "lifequest:seen-badges";
 const STRAVA_SYNCED_KEY = "lifequest:strava-synced";
 const BALANCE_REFRESH_KEY = "lifequest:balance-refresh";
-const ACTIVITIES_PREVIEW_LIMIT = 4;
+const ACTIVITIES_PREVIEW_LIMIT = 3;
 const LEVEL_XP = 2000;
 const LEVEL_UP_COST = 500;
 const BURN_ADDRESS = "0x000000000000000000000000000000000000dEaD" as Address;
@@ -1418,7 +1418,7 @@ function HomeContent() {
             </p>
             <span className="hidden text-[11px] text-slate-400 sm:inline">Bacheca</span>
           </div>
-          <div className="mt-3 flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory">
+          <div className="mt-2 flex gap-2 overflow-x-auto pb-2 snap-x snap-mandatory sm:gap-3">
             {trophyBadges.map((badge) => {
               const unlocked = Boolean(
                 resolvedBadgeUnlocks[badge.id as keyof typeof resolvedBadgeUnlocks]
@@ -1426,7 +1426,7 @@ function HomeContent() {
               return (
                 <div
                   key={badge.id}
-                  className={`group relative min-w-[150px] snap-start overflow-hidden rounded-2xl border border-white/10 bg-slate-900/60 p-2.5 text-center transition-all duration-500 sm:min-w-[170px] sm:p-3 ${
+                  className={`group relative min-w-[140px] snap-start overflow-hidden rounded-2xl border border-white/10 bg-slate-900/60 p-2 text-center transition-all duration-500 sm:min-w-[160px] sm:p-2.5 ${
                     unlocked
                       ? "hover:-translate-y-0.5 hover:shadow-[0_0_28px_rgba(251,146,60,0.45)]"
                       : "opacity-90"
@@ -1439,7 +1439,7 @@ function HomeContent() {
                   {unlocked ? (
                     <span className="pointer-events-none absolute -top-8 -right-8 h-20 w-20 rounded-full bg-amber-400/20 blur-2xl" />
                   ) : null}
-                  <div className="mx-auto flex aspect-square w-full items-center justify-center rounded-2xl bg-slate-950/70 ring-1 ring-white/5 p-3">
+                  <div className="mx-auto flex aspect-square w-full items-center justify-center rounded-2xl bg-slate-950/70 ring-1 ring-white/5 p-2">
                     <img
                       src={badge.image}
                       alt={badge.name}
@@ -1463,8 +1463,8 @@ function HomeContent() {
           </div>
         </div>
 
-        <section className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:flex-1 lg:min-h-0">
-          <aside className="col-span-12 lg:col-span-3 flex flex-col gap-4 lg:min-h-0">
+        <section className="grid grid-cols-1 gap-3 lg:grid-cols-12 lg:flex-1 lg:min-h-0">
+          <aside className="col-span-12 lg:col-span-3 flex flex-col gap-3 lg:min-h-0">
             {isWalletConnected ? (
               <>
                 <div
@@ -1778,9 +1778,9 @@ function HomeContent() {
             </div>
           </section>
 
-          <section className="col-span-12 lg:col-span-4 flex flex-col gap-4 lg:min-h-0">
+          <section className="col-span-12 lg:col-span-4 flex flex-col gap-3 lg:min-h-0">
             <div
-              className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-5 flex flex-col flex-1 lg:min-h-0 transition-all duration-500 ${
+              className={`rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl p-4 flex flex-col flex-1 lg:min-h-0 transition-all duration-500 ${
                 isDisconnected ? "grayscale-[0.3] saturate-75" : ""
               } ${isActivitiesExpanded ? "" : "lg:h-full"}`}
             >
@@ -1901,12 +1901,12 @@ function HomeContent() {
                       return (
                           <div
                             key={activity.id ?? `${activity.type}-${activity.date}`}
-                            className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-slate-900/40 backdrop-blur-xl p-4 shadow-2xl transition-all duration-500"
+                            className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-slate-900/40 backdrop-blur-xl p-3 shadow-2xl transition-all duration-500"
                           >
                             <div className="flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-3">
-                                <span className="text-lg">{activityIcon(activity.type)}</span>
-                                <span className="text-sm text-slate-100">
+                              <div className="flex items-center gap-2">
+                                <span className="text-base">{activityIcon(activity.type)}</span>
+                                <span className="text-xs text-slate-100 sm:text-sm">
                                   {display.label}{" "}
                                   <span className="font-mono text-slate-200">
                                     {display.detail}
@@ -1916,7 +1916,7 @@ function HomeContent() {
                                     {" "}
                                     +{activity.reward ?? 0} LIFE
                                   {rewardShare ? (
-                                    <span className="ml-2 text-[11px] text-slate-200">
+                                    <span className="ml-2 text-[10px] text-slate-200">
                                       ({rewardShare})
                                     </span>
                                   ) : null}
