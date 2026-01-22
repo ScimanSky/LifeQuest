@@ -6,6 +6,7 @@ import { getDefaultConfig, RainbowKitProvider } from "@rainbow-me/rainbowkit";
 import { WagmiProvider, cookieStorage, createStorage } from "wagmi";
 import { polygonAmoy } from "wagmi/chains";
 import { http } from "viem";
+import { useAuthSync } from "@/hooks/useAuthSync";
 
 const config = getDefaultConfig({
   appName: "LifeQuest",
@@ -24,6 +25,7 @@ type ProvidersProps = {
 
 export default function Providers({ children }: ProvidersProps) {
   const [queryClient] = useState(() => new QueryClient());
+  useAuthSync();
 
   return (
     <WagmiProvider config={config} reconnectOnMount>
