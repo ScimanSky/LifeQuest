@@ -1,8 +1,6 @@
 const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
-const fs = require("fs");
-const path = require("path");
 const { ethers } = require("ethers");
 const { createClient } = require("@supabase/supabase-js");
 require("dotenv").config();
@@ -75,7 +73,6 @@ const CONTRACT_ABI = [
   "function MINTER_ROLE() view returns (bytes32)",
   "function hasRole(bytes32 role, address account) view returns (bool)"
 ];
-const DATABASE_PATH = path.join(__dirname, "database.json");
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const supabase =
@@ -327,10 +324,10 @@ function normalizeActivityId(activityId) {
   return text.length ? text : null;
 }
 
-function createDefaultWalletDb() {
+function createDefaultUserProfile() {
   return {
-    unlockedBadges: [],
-    weeklyBonuses: [],
+    level: 1,
+    xp: 0,
     badges: {
       sonicBurst: false,
       hydroMaster: false,
@@ -339,41 +336,72 @@ function createDefaultWalletDb() {
     },
     stats: {
       gymSessions: 0,
-      zenSessions: 0
-    },
-    level: 1
+      zenSessions: 0,
+      weeklyBonuses: [],
+      unlockedBadges: []
+    }
   };
 }
 
-function loadDatabase() {
-  try {
-    if (!fs.existsSync(DATABASE_PATH)) {
-      const initial = { wallets: {} };
-      fs.writeFileSync(DATABASE_PATH, JSON.stringify(initial, null, 2));
-      return initial;
-    }
-
-    const raw = fs.readFileSync(DATABASE_PATH, "utf8");
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") {
-      return { wallets: {} };
-    }
-    if (!parsed.wallets || typeof parsed.wallets !== "object") {
-      return { wallets: { __legacy: parsed } };
-    }
-    return parsed;
-  } catch (err) {
-    console.error("Errore lettura database.json:", err);
-    return { wallets: {} };
+function normalizeProfile(row) {
+  const defaults = createDefaultUserProfile();
+  if (!row || typeof row !== "object") {
+    return defaults;
   }
+  const badges = {
+    ...defaults.badges,
+    ...(row.badges && typeof row.badges === "object" ? row.badges : {})
+  };
+  const stats = {
+    ...defaults.stats,
+    ...(row.stats && typeof row.stats === "object" ? row.stats : {})
+  };
+  if (!Array.isArray(stats.weeklyBonuses)) stats.weeklyBonuses = [];
+  if (!Array.isArray(stats.unlockedBadges)) stats.unlockedBadges = [];
+  return {
+    level: Number(row.level) || defaults.level,
+    xp: Number(row.xp) || 0,
+    badges,
+    stats
+  };
 }
 
-function saveDatabase(data) {
-  try {
-    fs.writeFileSync(DATABASE_PATH, JSON.stringify(data, null, 2));
-  } catch (err) {
-    console.error("Errore scrittura database.json:", err);
-  }
+async function fetchUserProfile(wallet) {
+  return withSupabase(
+    async () => {
+      const { data, error } = await supabase
+        .from("user_profiles")
+        .select("user_id,level,xp,badges,stats")
+        .eq("user_id", wallet)
+        .maybeSingle();
+      if (error) throw error;
+      return normalizeProfile(data);
+    },
+    createDefaultUserProfile(),
+    "fetchUserProfile"
+  );
+}
+
+async function upsertUserProfile(wallet, profile) {
+  const payload = {
+    user_id: wallet,
+    level: Number(profile?.level) || 1,
+    xp: Number(profile?.xp) || 0,
+    badges: profile?.badges ?? createDefaultUserProfile().badges,
+    stats: profile?.stats ?? createDefaultUserProfile().stats,
+    updated_at: new Date().toISOString()
+  };
+  return withSupabase(
+    async () => {
+      const { error } = await supabase
+        .from("user_profiles")
+        .upsert(payload, { onConflict: "user_id" });
+      if (error) throw error;
+      return true;
+    },
+    false,
+    "upsertUserProfile"
+  );
 }
 
 function computeRank(balanceWei) {
@@ -395,35 +423,6 @@ function computeRank(balanceWei) {
   return "LEGEND (Lv 21+)";
 }
 
-function getWalletDb(store, wallet) {
-  if (!store.wallets) {
-    store.wallets = {};
-  }
-  if (!store.wallets[wallet]) {
-    store.wallets[wallet] = createDefaultWalletDb();
-  }
-  const db = store.wallets[wallet];
-  if (!Array.isArray(db.unlockedBadges)) {
-    db.unlockedBadges = [];
-  }
-  if (!Array.isArray(db.weeklyBonuses)) {
-    db.weeklyBonuses = [];
-  }
-  if (!db.badges || typeof db.badges !== "object") {
-    db.badges = createDefaultWalletDb().badges;
-  }
-  db.badges.sonicBurst = Boolean(db.badges.sonicBurst);
-  db.badges.hydroMaster = Boolean(db.badges.hydroMaster);
-  db.badges.ironProtocol = Boolean(db.badges.ironProtocol);
-  db.badges.zenFocus = Boolean(db.badges.zenFocus);
-  if (!db.stats || typeof db.stats !== "object") {
-    db.stats = createDefaultWalletDb().stats;
-  }
-  db.stats.gymSessions = Number(db.stats.gymSessions) || 0;
-  db.stats.zenSessions = Number(db.stats.zenSessions) || 0;
-  db.level = Number(db.level) || 1;
-  return db;
-}
 function computeXpMissing(balanceWei) {
   const tokenUnit = ethers.parseUnits("1", 18);
   const balanceTokens = balanceWei / tokenUnit;
@@ -432,11 +431,13 @@ function computeXpMissing(balanceWei) {
   return nextLevelXp - balanceTokens;
 }
 
-function computeXpTotal(activities, db) {
+function computeXpTotal(activities, stats) {
   const activityXp = activities.reduce((sum, activity) => {
     return sum + (Number(activity?.reward) || 0);
   }, 0);
-  const bonuses = Array.isArray(db.weeklyBonuses) ? db.weeklyBonuses : [];
+  const bonuses = Array.isArray(stats?.weeklyBonuses)
+    ? stats.weeklyBonuses
+    : [];
   const bonusXp = bonuses.reduce((sum, bonus) => {
     return sum + (Number(bonus?.reward) || 0);
   }, 0);
@@ -564,7 +565,7 @@ function filterActivitiesByRange(activities, startAt, endAt) {
   });
 }
 
-function checkPerfectWeekBonus(activities, db) {
+function checkPerfectWeekBonus(activities, stats) {
   const now = new Date();
   const { start } = getWeekBounds(now);
   const weekKey = start.toISOString().split("T")[0];
@@ -577,7 +578,7 @@ function checkPerfectWeekBonus(activities, db) {
   };
   const completedCount = Object.values(completed).filter(Boolean).length;
 
-  const bonuses = Array.isArray(db.weeklyBonuses) ? db.weeklyBonuses : [];
+  const bonuses = Array.isArray(stats?.weeklyBonuses) ? stats.weeklyBonuses : [];
   const alreadyAwarded = bonuses.some((bonus) => bonus.weekStart === weekKey);
   let bonusReward = 0;
 
@@ -589,7 +590,9 @@ function checkPerfectWeekBonus(activities, db) {
       label: "Bonus Settimana Perfetta",
       awardedAt: new Date().toISOString()
     });
-    db.weeklyBonuses = bonuses;
+    if (stats && typeof stats === "object") {
+      stats.weeklyBonuses = bonuses;
+    }
   }
 
   return {
@@ -635,13 +638,13 @@ function computeBadgeStats(activities, stats = {}) {
   };
 }
 
-function checkBadgeUnlock(stats, db) {
+function checkBadgeUnlock(stats, profile) {
   const badges = {
     sonicBurst: false,
     hydroMaster: false,
     ironProtocol: false,
     zenFocus: false,
-    ...(db.badges || {})
+    ...(profile?.badges || {})
   };
 
   if (stats.totalRunDistanceKm >= 50) {
@@ -657,7 +660,9 @@ function checkBadgeUnlock(stats, db) {
     badges.zenFocus = true;
   }
 
-  db.badges = badges;
+  if (profile) {
+    profile.badges = badges;
+  }
   return badges;
 }
 
@@ -1371,18 +1376,16 @@ app.get("/user/stats", async (req, res) => {
     const rank = computeRank(balanceWei);
     const activities = await loadWalletActivities(wallet);
     const challengeRows = await fetchChallengesForWallet(wallet);
-
-    const dbStore = loadDatabase();
-    const db = getWalletDb(dbStore, wallet);
-    const unlockedBadges = Array.isArray(db.unlockedBadges)
-      ? db.unlockedBadges
+    const profile = await fetchUserProfile(wallet);
+    const unlockedBadges = Array.isArray(profile.stats?.unlockedBadges)
+      ? profile.stats.unlockedBadges
       : [];
-    const badges = db.badges && typeof db.badges === "object" ? db.badges : {};
+    const badges = profile.badges && typeof profile.badges === "object" ? profile.badges : {};
 
     const xpFromChallenges = computeChallengeXp(wallet, challengeRows);
     const xpTotal =
-      xpFromChallenges > 0 ? xpFromChallenges : computeXpTotal(activities, db);
-    const currentLevel = Number(db.level) || 1;
+      xpFromChallenges > 0 ? xpFromChallenges : computeXpTotal(activities, profile.stats);
+    const currentLevel = Number(profile.level) || 1;
     const baseXp = Math.max(0, (currentLevel - 1) * LEVEL_XP);
     const xpCurrentRaw = Math.max(0, xpTotal - baseXp);
     const xpCurrent = Math.min(xpCurrentRaw, LEVEL_XP);
@@ -1397,10 +1400,12 @@ app.get("/user/stats", async (req, res) => {
           name: "The Ignition",
           icon: "zap"
         });
-        db.unlockedBadges = unlockedBadges;
-        saveDatabase(dbStore);
+        profile.stats.unlockedBadges = unlockedBadges;
       }
     }
+
+    profile.xp = xpTotal;
+    await upsertUserProfile(wallet, profile);
 
     return res.json({
       balance: ethers.formatUnits(balanceWei, 18),
@@ -1453,9 +1458,8 @@ app.post("/strava/sync", async (req, res) => {
         .filter(Boolean)
     );
 
-    const dbStore = loadDatabase();
-    const db = getWalletDb(dbStore, wallet);
-    const perfectWeek = checkPerfectWeekBonus(activities, db);
+    const profile = await fetchUserProfile(wallet);
+    const perfectWeek = checkPerfectWeekBonus(activities, profile.stats);
 
     const { pendingActivities, totalReward } = evaluateActivities(
       activities,
@@ -1463,10 +1467,11 @@ app.post("/strava/sync", async (req, res) => {
     );
     const totalRewardWithBonus = totalReward + perfectWeek.bonusReward;
     if (totalRewardWithBonus === 0) {
-      const stats = computeBadgeStats(activities, db.stats);
-      db.stats = stats;
-      checkBadgeUnlock(stats, db);
-      saveDatabase(dbStore);
+      const stats = computeBadgeStats(activities, profile.stats);
+      profile.stats = { ...profile.stats, ...stats };
+      checkBadgeUnlock(stats, profile);
+      profile.xp = computeXpTotal(activities, profile.stats);
+      await upsertUserProfile(wallet, profile);
       return res.json({
         status: "no_new_activities",
         totalReward: 0,
@@ -1480,10 +1485,11 @@ app.post("/strava/sync", async (req, res) => {
     const updatedActivities = walletActivities.concat(pendingActivities);
     await upsertMintedActivities(wallet, pendingActivities);
 
-    const stats = computeBadgeStats(activities, db.stats);
-    db.stats = stats;
-    checkBadgeUnlock(stats, db);
-    saveDatabase(dbStore);
+    const stats = computeBadgeStats(activities, profile.stats);
+    profile.stats = { ...profile.stats, ...stats };
+    checkBadgeUnlock(stats, profile);
+    profile.xp = computeXpTotal(activities, profile.stats);
+    await upsertUserProfile(wallet, profile);
 
     return res.json({
       status: "minted",
@@ -1513,20 +1519,21 @@ app.post("/user/level-up", async (req, res) => {
       return res.status(400).json({ error: "Wallet non valido" });
     }
     const activities = await loadWalletActivities(wallet);
-    const dbStore = loadDatabase();
-    const db = getWalletDb(dbStore, wallet);
+    const challengeRows = await fetchChallengesForWallet(wallet);
+    const profile = await fetchUserProfile(wallet);
     const xpFromChallenges = computeChallengeXp(wallet, challengeRows);
     const xpTotal =
-      xpFromChallenges > 0 ? xpFromChallenges : computeXpTotal(activities, db);
-    const currentLevel = Number(db.level) || 1;
+      xpFromChallenges > 0 ? xpFromChallenges : computeXpTotal(activities, profile.stats);
+    const currentLevel = Number(profile.level) || 1;
     const baseXp = Math.max(0, (currentLevel - 1) * LEVEL_XP);
     const xpCurrent = Math.max(0, xpTotal - baseXp);
     if (xpCurrent < LEVEL_XP) {
       return res.status(400).json({ error: "XP insufficienti" });
     }
-    db.level = currentLevel + 1;
-    saveDatabase(dbStore);
-    return res.json({ level: db.level });
+    profile.level = currentLevel + 1;
+    profile.xp = xpTotal;
+    await upsertUserProfile(wallet, profile);
+    return res.json({ level: profile.level });
   } catch (err) {
     console.error("Level up error:", err);
     return res.status(500).json({ error: "Errore interno" });
@@ -1759,9 +1766,8 @@ app.get("/strava/callback", async (req, res) => {
         .filter(Boolean)
     );
 
-    const dbStore = loadDatabase();
-    const db = getWalletDb(dbStore, wallet);
-    const perfectWeek = checkPerfectWeekBonus(activities, db);
+    const profile = await fetchUserProfile(wallet);
+    const perfectWeek = checkPerfectWeekBonus(activities, profile.stats);
 
     const { pendingActivities, totalReward } = evaluateActivities(
       activities,
@@ -1770,10 +1776,11 @@ app.get("/strava/callback", async (req, res) => {
     const totalRewardWithBonus = totalReward + perfectWeek.bonusReward;
 
     if (totalRewardWithBonus === 0) {
-      const stats = computeBadgeStats(activities, db.stats);
-      db.stats = stats;
-      checkBadgeUnlock(stats, db);
-      saveDatabase(dbStore);
+      const stats = computeBadgeStats(activities, profile.stats);
+      profile.stats = { ...profile.stats, ...stats };
+      checkBadgeUnlock(stats, profile);
+      profile.xp = computeXpTotal(activities, profile.stats);
+      await upsertUserProfile(wallet, profile);
       return res.redirect(`${FRONTEND_URL}/?no_new_activities=true`);
     }
 
@@ -1782,10 +1789,11 @@ app.get("/strava/callback", async (req, res) => {
     const updatedActivities = walletActivities.concat(pendingActivities);
     await upsertMintedActivities(wallet, pendingActivities);
 
-    const stats = computeBadgeStats(activities, db.stats);
-    db.stats = stats;
-    checkBadgeUnlock(stats, db);
-    saveDatabase(dbStore);
+    const stats = computeBadgeStats(activities, profile.stats);
+    profile.stats = { ...profile.stats, ...stats };
+    checkBadgeUnlock(stats, profile);
+    profile.xp = computeXpTotal(activities, profile.stats);
+    await upsertUserProfile(wallet, profile);
 
     return res.redirect(`${FRONTEND_URL}/?minted=true`);
   } catch (err) {
