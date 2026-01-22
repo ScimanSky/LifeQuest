@@ -12,6 +12,7 @@ import {
   useWriteContract,
   useWaitForTransactionReceipt
 } from "wagmi";
+import { supabase } from "@/utils/supabase";
 import { formatEther, parseAbi, parseEther, type Address } from "viem";
 import {
   Trophy,
@@ -41,6 +42,7 @@ const BALANCE_REFRESH_KEY = "lifequest:balance-refresh";
 const ACTIVITIES_PREVIEW_LIMIT = 3;
 const LEVEL_XP = 2000;
 const LEVEL_UP_COST = 500;
+const INVESTOR_TARGET = 500;
 const BURN_ADDRESS = "0x000000000000000000000000000000000000dEaD" as Address;
 const LIFE_TOKEN_ADDRESS = (process.env.NEXT_PUBLIC_LIFE_TOKEN_ADDRESS ??
   process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ??
@@ -239,6 +241,7 @@ function HomeContent() {
     "run" | "swim" | "iron" | "mindfulness" | null
   >(null);
   const [showAllActivities, setShowAllActivities] = useState(false);
+  const [investorProgress, setInvestorProgress] = useState(0);
   const [isWalletMenuOpen, setIsWalletMenuOpen] = useState(false);
   const walletMenuRef = useRef<HTMLDivElement | null>(null);
   const trophyCarouselRef = useRef<HTMLDivElement | null>(null);
@@ -1012,6 +1015,44 @@ function HomeContent() {
     };
   }, [refetchLifeBalance]);
 
+  useEffect(() => {
+    let isMounted = true;
+    const loadInvestorProgress = async () => {
+      if (!walletAddress) {
+        if (isMounted) setInvestorProgress(0);
+        return;
+      }
+      try {
+        const addressValue = walletAddress.toLowerCase();
+        const { data, error } = await supabase
+          .from("challenges")
+          .select("stake,creator_address,opponent_address,status")
+          .or(
+            `creator_address.ilike.${addressValue},opponent_address.ilike.${addressValue}`
+          );
+        if (error) {
+          console.error("Errore lettura sfide per Investitore:", error);
+          return;
+        }
+        const total = (data ?? []).reduce((sum, row) => {
+          if (row?.status === "cancelled") return sum;
+          const stakeValue = Number(row?.stake);
+          if (!Number.isFinite(stakeValue)) return sum;
+          return sum + stakeValue;
+        }, 0);
+        if (isMounted) {
+          setInvestorProgress(Math.round(total));
+        }
+      } catch (err) {
+        console.error("Errore calcolo Investitore:", err);
+      }
+    };
+    void loadInvestorProgress();
+    return () => {
+      isMounted = false;
+    };
+  }, [walletAddress]);
+
   const weekBounds = useMemo(() => {
     const { start, end } = getWeekBounds(new Date());
     return { startTime: start.getTime(), endTime: end.getTime() };
@@ -1253,9 +1294,7 @@ function HomeContent() {
       ironProtocol: ironSessions >= 5
     };
   }, [activities]);
-  const investorTarget = 500;
-  const investorProgress = 150;
-  const investorUnlocked = investorProgress >= investorTarget;
+  const investorUnlocked = investorProgress >= INVESTOR_TARGET;
   const resolvedBadgeUnlocks = {
     sonicBurst: Boolean(unlockedSpecialBadges.sonicBurst || derivedBadgeUnlocks.sonicBurst),
     hydroMaster: Boolean(unlockedSpecialBadges.hydroMaster || derivedBadgeUnlocks.hydroMaster),
@@ -1811,9 +1850,9 @@ function HomeContent() {
                       rewardUnit="XP"
                       hideReward={!isWalletConnected}
                       current={investorProgress}
-                      target={investorTarget}
-                      status={`${investorProgress}/${investorTarget} LIFE scommessi`}
-                      isComplete={false}
+                      target={INVESTOR_TARGET}
+                      status={`${investorProgress}/${INVESTOR_TARGET} LIFE scommessi`}
+                      isComplete={investorUnlocked}
                       isActive={false}
                       showDots={false}
                       progressTone="bg-amber-400"
