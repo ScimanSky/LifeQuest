@@ -3,7 +3,7 @@ import { BrowserProvider, Contract, type Eip1193Provider } from "ethers";
 export const LIFE_TOKEN_ADDRESS = "0xA0D50427b654857EC90432017Caa64f9A9DBa1a5";
 export const AMOY_CHAIN_ID = 80002;
 export const AMOY_CHAIN_ID_HEX = "0x13882";
-export const AMOY_NETWORK = {
+const AMOY_NETWORK_BASE = {
   chainId: AMOY_CHAIN_ID_HEX,
   chainName: "Polygon Amoy",
   nativeCurrency: {
@@ -11,9 +11,22 @@ export const AMOY_NETWORK = {
     symbol: "MATIC",
     decimals: 18
   },
-  rpcUrls: ["https://rpc-amoy.polygon.technology/"],
   blockExplorerUrls: ["https://amoy.polygonscan.com/"]
 } as const;
+
+function getRpcUrl() {
+  if (typeof window !== "undefined") {
+    return `${window.location.origin}/api/rpc`;
+  }
+  return "/api/rpc";
+}
+
+function getAmoyNetwork() {
+  return {
+    ...AMOY_NETWORK_BASE,
+    rpcUrls: [getRpcUrl()]
+  } as const;
+}
 
 export const LIFE_TOKEN_ABI = [
   "function name() view returns (string)",
@@ -59,7 +72,7 @@ export async function switchNetwork(externalProvider?: Eip1193Provider) {
 
     await ethereum.request({
       method: "wallet_addEthereumChain",
-      params: [AMOY_NETWORK]
+      params: [getAmoyNetwork()]
     });
   }
 }
