@@ -227,12 +227,15 @@ async function loadWalletActivities(wallet) {
 async function fetchChallengesForWallet(wallet, statusList) {
   return withSupabase(
     async () => {
+      const walletValue = String(wallet || "").trim();
       let query = supabase
         .from("challenges")
         .select(
           "id,creator_address,opponent_address,creator_progress,opponent_progress,status,stake"
         )
-        .or(`creator_address.eq.${wallet},opponent_address.eq.${wallet}`);
+        .or(
+          `creator_address.ilike.${walletValue},opponent_address.ilike.${walletValue}`
+        );
       if (Array.isArray(statusList) && statusList.length) {
         query = query.in("status", statusList);
       }
