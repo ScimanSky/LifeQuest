@@ -37,6 +37,9 @@ const SWIM_REWARD = 20;
 const IRON_REWARD = 10;
 const MINDFULNESS_REWARD = 10;
 
+const INVESTOR_TARGET = 500;
+const INVESTOR_XP_BONUS = 50;
+
 const XP_CHALLENGE_STATUSES = [
   "completed",
   "claim_completato",
@@ -64,5 +67,7 @@ module.exports = {
   SWIM_REWARD,
   IRON_REWARD,
   MINDFULNESS_REWARD,
+  INVESTOR_TARGET,
+  INVESTOR_XP_BONUS,
   XP_CHALLENGE_STATUSES
 };

@@ -230,7 +230,7 @@ async function fetchChallengesForWallet(wallet, statusList) {
       let query = supabase
         .from("challenges")
         .select(
-          "id,creator_address,opponent_address,creator_progress,opponent_progress,status"
+          "id,creator_address,opponent_address,creator_progress,opponent_progress,status,stake"
         )
         .or(`creator_address.eq.${wallet},opponent_address.eq.${wallet}`);
       if (Array.isArray(statusList) && statusList.length) {

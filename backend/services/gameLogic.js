@@ -23,7 +23,8 @@ function createDefaultUserProfile() {
       sonicBurst: false,
       hydroMaster: false,
       ironProtocol: false,
-      zenFocus: false
+      zenFocus: false,
+      bet: false
     },
     stats: {
       gymSessions: 0,
