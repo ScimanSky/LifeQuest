@@ -1657,7 +1657,7 @@ app.post("/arena/claim", async (req, res) => {
         ? stakeValue * ARENA_DRAW_REFUND_RATE
         : stakeValue * 2;
 
-    await mintArenaReward(payout, wallet);
+    const receipt = await mintArenaReward(payout, wallet);
 
     const patch = {};
     if (isCreator) {
@@ -1679,7 +1679,11 @@ app.post("/arena/claim", async (req, res) => {
 
     await updateChallengeById(challenge.id, patch);
 
-    return res.json({ status: "claimed", payout });
+    return res.json({
+      status: "claimed",
+      payout,
+      txHash: receipt?.hash || receipt?.transactionHash || null
+    });
   } catch (err) {
     console.error("Arena claim error:", err);
     const message = err?.message || "Errore interno";

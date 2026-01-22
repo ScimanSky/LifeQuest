@@ -969,7 +969,12 @@ export default function ArenaPage() {
         if (duel.status === "resolved") {
           triggerClaimConfetti();
         }
+        if (typeof window !== "undefined" && data?.txHash) {
+          console.info("Claim txHash:", data.txHash);
+        }
         await fetchChallenges();
+        // aspetta un attimo per la propagazione on-chain
+        await new Promise((resolve) => setTimeout(resolve, 1500));
         await refetchLifeBalance();
         if (typeof window !== "undefined") {
           window.localStorage.setItem("lifequest:balance-refresh", Date.now().toString());
@@ -1370,7 +1375,7 @@ export default function ArenaPage() {
                       {acceptError}
                     </div>
                   ) : null}
-                  {claimError && isClaiming ? (
+                  {claimError ? (
                     <div className="mt-3 rounded-2xl border border-amber-400/40 bg-amber-500/10 px-4 py-2 text-xs text-amber-200">
                       {claimError}
                     </div>
