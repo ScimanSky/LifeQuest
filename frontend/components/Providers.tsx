@@ -23,14 +23,19 @@ type ProvidersProps = {
   children: ReactNode;
 };
 
+function AuthSyncer() {
+  useAuthSync();
+  return null;
+}
+
 export default function Providers({ children }: ProvidersProps) {
   const [queryClient] = useState(() => new QueryClient());
-  useAuthSync();
 
   return (
     <WagmiProvider config={config} reconnectOnMount>
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider initialChain={polygonAmoy}>
+          <AuthSyncer />
           {children}
         </RainbowKitProvider>
       </QueryClientProvider>
