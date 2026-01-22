@@ -330,6 +330,7 @@ export default function ArenaPage() {
     seed: claimConfettiSeed,
     trigger: triggerClaimConfetti
   } = useClaimConfetti();
+  const celebratedWinsRef = useRef<Set<string>>(new Set());
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
   const { switchChainAsync } = useSwitchChain();
@@ -507,7 +508,7 @@ export default function ArenaPage() {
     if (duel.status !== "matched") return;
     if (!duel.startAt) return;
     try {
-      const response = await fetch(`${BACKEND_BASE_URL}/arena/progress`, {
+      const response = await fetch(`${BACKEND_BASE_URL}/arena/resolve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ challengeId: duel.id })
@@ -546,6 +547,19 @@ export default function ArenaPage() {
       console.error("Errore aggiornamento progressi:", error);
     }
   }, [address]);
+
+  useEffect(() => {
+    if (!address) return;
+    const addressLower = address.toLowerCase();
+    for (const duel of challenges) {
+      if (duel.status !== "resolved") continue;
+      if (!duel.winnerAddress) continue;
+      if (duel.winnerAddress.toLowerCase() !== addressLower) continue;
+      if (celebratedWinsRef.current.has(duel.id)) continue;
+      celebratedWinsRef.current.add(duel.id);
+      triggerClaimConfetti();
+    }
+  }, [address, challenges, triggerClaimConfetti]);
 
   const handleRefreshProgress = useCallback(
     async (duel: ArenaDuel) => {
