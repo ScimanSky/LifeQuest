@@ -1,33 +1,32 @@
 import { ethers } from "hardhat";
 
 async function main() {
-  // 1. Recuperiamo l'account che sta facendo l'operazione (il tuo wallet 0x9ee...)
+  // 1. Recuperiamo l'account (il tuo wallet)
   const [deployer] = await ethers.getSigners();
   
   console.log("----------------------------------------------------");
-  console.log("🚀 Inizio la pubblicazione con l'account:", deployer.address);
+  console.log("🚀 Inizio il deploy del NUOVO contratto (RBAC) con:", deployer.address);
   console.log("----------------------------------------------------");
 
   // 2. Prepariamo il contratto
-  // NOTA: Passiamo 'deployer.address' tra parentesi quadre perché 
-  // il tuo contratto LifeToken richiede un 'initialOwner' nel costruttore.
-  const lifeToken = await ethers.deployContract("LifeToken", [deployer.address]);
+  // NOTA: Costruttore vuoto, niente argomenti []
+  const lifeToken = await ethers.deployContract("LifeToken");
 
-  console.log("⏳ Attendo che la rete Polygon confermi la transazione...");
+  console.log("⏳ Attendo conferma dalla rete Polygon Amoy...");
   
-  // 3. Aspettiamo che la blockchain confermi (ci vuole qualche secondo)
+  // 3. Aspettiamo la conferma
   await lifeToken.waitForDeployment();
 
   const indirizzoContratto = await lifeToken.getAddress();
 
   console.log("----------------------------------------------------");
-  console.log("🎉 SUCCESSO! Il tuo LifeQuest Token è online!");
-  console.log("📍 INDIRIZZO DEL CONTRATTO:", indirizzoContratto);
+  console.log("🎉 SUCCESSO! Il contratto aggiornato è online!");
+  console.log("📍 NUOVO INDIRIZZO:", indirizzoContratto);
   console.log("----------------------------------------------------");
-  console.log("Copia l'indirizzo qui sopra, ti servirà per MetaMask!");
+  console.log("⚠️  IMPORTANTE: Vai su Vercel (e nel tuo .env.local) e aggiorna:");
+  console.log("NEXT_PUBLIC_LIFE_TOKEN_ADDRESS=" + indirizzoContratto);
 }
 
-// Gestione errori standard
 main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
