@@ -20,7 +20,7 @@ import {
   useSwitchChain,
   useWriteContract
 } from "wagmi";
-import { formatEther, parseAbi, parseEther, type Address } from "viem";
+import { formatEther, parseAbi, parseEther, parseGwei, type Address } from "viem";
 import { polygonAmoy } from "viem/chains";
 import { supabase } from "../../utils/supabase";
 
@@ -32,6 +32,7 @@ const ARENA_ARCHIVE_AFTER_DAYS = 1;
 const BACKEND_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 const EXPECTED_CHAIN_ID = polygonAmoy.id;
 const MIN_GAS_WEI = parseEther("0.005");
+const GAS_FEE = parseGwei("30");
 
 const LIFE_TOKEN_ADDRESS = (process.env.NEXT_PUBLIC_LIFE_TOKEN_ADDRESS ??
   process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ??
@@ -761,7 +762,9 @@ export default function ArenaPage() {
         abi: LIFE_TOKEN_ABI,
         functionName: "transfer",
         args: [destinationAddress, stakeWei],
-        gas
+        gas,
+        maxFeePerGas: GAS_FEE,
+        maxPriorityFeePerGas: GAS_FEE
       });
 
       await publicClient.waitForTransactionReceipt({ hash: transferHash });
@@ -869,7 +872,9 @@ export default function ArenaPage() {
           abi: LIFE_TOKEN_ABI,
           functionName: "transfer",
           args: [BURN_ADDRESS, stakeWei],
-          gas
+          gas,
+          maxFeePerGas: GAS_FEE,
+          maxPriorityFeePerGas: GAS_FEE
         });
         await publicClient.waitForTransactionReceipt({ hash: transferHash });
 

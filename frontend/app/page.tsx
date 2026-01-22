@@ -13,7 +13,7 @@ import {
   useWaitForTransactionReceipt
 } from "wagmi";
 import { supabase } from "@/utils/supabase";
-import { formatEther, parseAbi, parseEther, type Address } from "viem";
+import { formatEther, parseAbi, parseEther, parseGwei, type Address } from "viem";
 import {
   Trophy,
   Activity,
@@ -44,6 +44,7 @@ const LEVEL_XP = 2000;
 const LEVEL_UP_COST = 500;
 const INVESTOR_TARGET = 500;
 const BURN_ADDRESS = "0x000000000000000000000000000000000000dEaD" as Address;
+const GAS_FEE = parseGwei("30");
 const LIFE_TOKEN_ADDRESS = (process.env.NEXT_PUBLIC_LIFE_TOKEN_ADDRESS ??
   process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ??
   "0x0000000000000000000000000000000000000000") as Address;
@@ -362,7 +363,9 @@ function HomeContent() {
       address: LIFE_TOKEN_ADDRESS,
       abi: LIFE_TOKEN_ABI,
       functionName: "transfer",
-      args: [BURN_ADDRESS, parseEther(LEVEL_UP_COST.toString())]
+      args: [BURN_ADDRESS, parseEther(LEVEL_UP_COST.toString())],
+      maxFeePerGas: GAS_FEE,
+      maxPriorityFeePerGas: GAS_FEE
     });
   }, [address, canLevelUp, isLevelingUp, writeContract]);
 
@@ -380,7 +383,9 @@ function HomeContent() {
       address: LIFE_TOKEN_ADDRESS,
       abi: LIFE_TOKEN_ABI,
       functionName: "mint",
-      args: [address, parseEther("1000")]
+      args: [address, parseEther("1000")],
+      maxFeePerGas: GAS_FEE,
+      maxPriorityFeePerGas: GAS_FEE
     });
   }, [address, isMinting, writeMintContract]);
 
