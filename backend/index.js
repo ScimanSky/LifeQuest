@@ -4,6 +4,7 @@ const axios = require("axios");
 const fs = require("fs");
 const path = require("path");
 const { ethers } = require("ethers");
+const { createClient } = require("@supabase/supabase-js");
 require("dotenv").config();
 
 const app = express();
@@ -15,7 +16,9 @@ const REQUIRED_ENV = [
   "STRAVA_CLIENT_SECRET",
   "POLYGON_RPC_URL",
   "CONTRACT_ADDRESS",
-  "OWNER_PRIVATE_KEY"
+  "OWNER_PRIVATE_KEY",
+  "SUPABASE_URL",
+  "SUPABASE_SERVICE_ROLE_KEY"
 ];
 
 const missing = REQUIRED_ENV.filter((key) => !process.env[key]);
@@ -69,11 +72,18 @@ const CONTRACT_ABI = [
   "function mint(address to, uint256 amount)",
   "function balanceOf(address account) view returns (uint256)"
 ];
-const PAID_ACTIVITIES_PATH = path.join(__dirname, "paid_activities.json");
 const DATABASE_PATH = path.join(__dirname, "database.json");
-const SUPABASE_URL =
-  process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const supabase =
+  SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false
+        }
+      })
+    : null;
 const arenaProgressCache = new Map();
 
 function normalizeWallet(address) {
@@ -115,93 +125,121 @@ function setCachedArenaProgress(wallet, type, startAt, endAt, progress) {
 }
 
 function ensureSupabaseConfig() {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !supabase) {
     throw new Error("Supabase non configurato");
   }
 }
 
-function supabaseHeaders(prefer = "return=representation") {
-  return {
-    apikey: SUPABASE_SERVICE_ROLE_KEY,
-    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-    "Content-Type": "application/json",
-    Prefer: prefer
-  };
+async function withSupabase(task, fallback, context) {
+  try {
+    ensureSupabaseConfig();
+    return await task();
+  } catch (err) {
+    console.error(`Errore Supabase${context ? ` (${context})` : ""}:`, err);
+    return fallback;
+  }
 }
 
 async function fetchChallengeById(challengeId) {
-  ensureSupabaseConfig();
-  const response = await axios.get(`${SUPABASE_URL}/rest/v1/challenges`, {
-    headers: supabaseHeaders(),
-    params: {
-      id: `eq.${challengeId}`,
-      select: "*"
-    }
-  });
-  const rows = Array.isArray(response.data) ? response.data : [];
-  return rows[0] || null;
+  return withSupabase(
+    async () => {
+      const { data, error } = await supabase
+        .from("challenges")
+        .select("*")
+        .eq("id", challengeId)
+        .maybeSingle();
+      if (error) throw error;
+      return data || null;
+    },
+    null,
+    "fetchChallengeById"
+  );
 }
 
 async function updateChallengeById(challengeId, patch) {
-  ensureSupabaseConfig();
-  const response = await axios.patch(
-    `${SUPABASE_URL}/rest/v1/challenges?id=eq.${challengeId}`,
-    patch,
-    { headers: supabaseHeaders() }
+  return withSupabase(
+    async () => {
+      const { data, error } = await supabase
+        .from("challenges")
+        .update(patch)
+        .eq("id", challengeId)
+        .select();
+      if (error) throw error;
+      return data;
+    },
+    null,
+    "updateChallengeById"
   );
-  return response.data;
 }
 
-async function fetchStravaToken(wallet) {
-  ensureSupabaseConfig();
-  const response = await axios.get(`${SUPABASE_URL}/rest/v1/strava_tokens`, {
-    headers: supabaseHeaders(),
-    params: {
-      wallet_address: `eq.${wallet}`,
-      select: "wallet_address,refresh_token,athlete_id,updated_at"
-    }
-  });
-  const rows = Array.isArray(response.data) ? response.data : [];
-  return rows[0] || null;
+async function fetchStravaToken(userId) {
+  return withSupabase(
+    async () => {
+      const { data, error } = await supabase
+        .from("user_auth")
+        .select(
+          "user_id,access_token,refresh_token,expires_at,athlete_id,updated_at"
+        )
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (error) throw error;
+      return data || null;
+    },
+    null,
+    "fetchStravaToken"
+  );
 }
 
 async function fetchWalletByAthlete(athleteId) {
   if (!athleteId) return null;
-  ensureSupabaseConfig();
-  const response = await axios.get(`${SUPABASE_URL}/rest/v1/strava_tokens`, {
-    headers: supabaseHeaders("return=representation"),
-    params: {
-      athlete_id: `eq.${athleteId}`,
-      select: "wallet_address"
-    }
-  });
-  const rows = Array.isArray(response.data) ? response.data : [];
-  return rows[0]?.wallet_address || null;
+  return withSupabase(
+    async () => {
+      const { data, error } = await supabase
+        .from("user_auth")
+        .select("user_id")
+        .eq("athlete_id", athleteId)
+        .maybeSingle();
+      if (error) throw error;
+      return data?.user_id || null;
+    },
+    null,
+    "fetchWalletByAthlete"
+  );
 }
 
-async function upsertStravaToken(wallet, refreshToken, athleteId) {
-  ensureSupabaseConfig();
-  const payload = {
-    wallet_address: wallet,
-    refresh_token: refreshToken,
-    athlete_id: athleteId ?? null,
-    updated_at: new Date().toISOString()
-  };
-  await axios.post(
-    `${SUPABASE_URL}/rest/v1/strava_tokens?on_conflict=wallet_address`,
-    payload,
-    { headers: supabaseHeaders("resolution=merge-duplicates,return=representation") }
+async function upsertStravaToken(userId, payload) {
+  return withSupabase(
+    async () => {
+      const record = {
+        ...payload,
+        user_id: payload.user_id ?? userId,
+        updated_at: payload.updated_at ?? new Date().toISOString()
+      };
+      const { error } = await supabase
+        .from("user_auth")
+        .upsert(record, { onConflict: "user_id" });
+      if (error) throw error;
+      return true;
+    },
+    false,
+    "upsertStravaToken"
   );
 }
 
 async function deleteStravaToken(wallet) {
-  ensureSupabaseConfig();
-  const response = await axios.delete(
-    `${SUPABASE_URL}/rest/v1/strava_tokens?wallet_address=eq.${wallet}`,
-    { headers: supabaseHeaders("return=representation") }
+  return withSupabase(
+    async () => {
+      const { data, error } = await supabase
+        .from("user_auth")
+        .delete()
+        .eq("user_id", wallet)
+        .select("user_id");
+      if (error) throw error;
+      return Array.isArray(data) && data.length > 0;
+    },
+    false,
+    "deleteStravaToken"
   );
-  const rows = Array.isArray(response.data) ? response.data : [];
-  return rows.length > 0;
 }
 
 function mapStravaActivityRow(row) {
@@ -219,21 +257,22 @@ function mapStravaActivityRow(row) {
 }
 
 async function fetchMintedActivities(wallet) {
-  ensureSupabaseConfig();
-  const response = await axios.get(`${SUPABASE_URL}/rest/v1/strava_activities`, {
-    headers: supabaseHeaders(),
-    params: {
-      wallet_address: `eq.${wallet}`,
-      select:
-        "activity_id,type,icon,distance,duration,reward,date"
-    }
-  });
-  const rows = Array.isArray(response.data) ? response.data : [];
-  return rows.map(mapStravaActivityRow).filter(Boolean);
+  return withSupabase(
+    async () => {
+      const { data, error } = await supabase
+        .from("activities")
+        .select("activity_id,type,icon,distance,duration,reward,date")
+        .eq("wallet_address", wallet);
+      if (error) throw error;
+      const rows = Array.isArray(data) ? data : [];
+      return rows.map(mapStravaActivityRow).filter(Boolean);
+    },
+    [],
+    "fetchMintedActivities"
+  );
 }
 
 async function upsertMintedActivities(wallet, activities) {
-  ensureSupabaseConfig();
   const payload = activities
     .map((activity) => {
       const id = normalizeActivityId(activity?.id);
@@ -252,94 +291,28 @@ async function upsertMintedActivities(wallet, activities) {
     .filter(Boolean);
 
   if (!payload.length) return;
-  await axios.post(
-    `${SUPABASE_URL}/rest/v1/strava_activities?on_conflict=wallet_address,activity_id`,
-    payload,
-    {
-      headers: supabaseHeaders("resolution=merge-duplicates,return=representation")
-    }
+  return withSupabase(
+    async () => {
+      const { error } = await supabase
+        .from("activities")
+        .upsert(payload, { onConflict: "activity_id" });
+      if (error) throw error;
+      return true;
+    },
+    false,
+    "upsertMintedActivities"
   );
 }
 
 async function loadWalletActivities(wallet) {
-  const store = loadPaidActivitiesStore();
-  const localActivities = getWalletActivities(store, wallet);
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    return localActivities;
-  }
-  try {
-    const dbActivities = await fetchMintedActivities(wallet);
-    if (dbActivities.length === 0 && localActivities.length > 0) {
-      await upsertMintedActivities(wallet, localActivities);
-    }
-    return mergeActivities(localActivities, dbActivities);
-  } catch (err) {
-    console.error("Errore lettura strava_activities:", err);
-    return localActivities;
-  }
-}
-
-function loadPaidActivitiesStore() {
-  try {
-    if (!fs.existsSync(PAID_ACTIVITIES_PATH)) {
-      const initial = { wallets: {} };
-      fs.writeFileSync(PAID_ACTIVITIES_PATH, JSON.stringify(initial, null, 2));
-      return initial;
-    }
-
-    const raw = fs.readFileSync(PAID_ACTIVITIES_PATH, "utf8");
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      return { wallets: { __legacy: parsed } };
-    }
-    if (!parsed || typeof parsed !== "object") {
-      return { wallets: {} };
-    }
-    const wallets =
-      parsed.wallets && typeof parsed.wallets === "object" ? parsed.wallets : {};
-    return { wallets };
-  } catch (err) {
-    console.error("Errore lettura paid_activities.json:", err);
-    return { wallets: {} };
-  }
-}
-
-function savePaidActivitiesStore(store) {
-  try {
-    fs.writeFileSync(
-      PAID_ACTIVITIES_PATH,
-      JSON.stringify(store, null, 2)
-    );
-  } catch (err) {
-    console.error("Errore scrittura paid_activities.json:", err);
-  }
-}
-
-function getWalletActivities(store, wallet) {
-  if (!store || !store.wallets) return [];
-  const list = store.wallets[wallet];
-  return Array.isArray(list) ? list : [];
+  const dbActivities = await fetchMintedActivities(wallet);
+  return Array.isArray(dbActivities) ? dbActivities : [];
 }
 
 function normalizeActivityId(activityId) {
   if (activityId === null || activityId === undefined) return null;
   const text = String(activityId).trim();
   return text.length ? text : null;
-}
-
-function mergeActivities(primary, secondary) {
-  const map = new Map();
-  for (const activity of primary || []) {
-    const id = normalizeActivityId(activity?.id);
-    if (!id) continue;
-    map.set(id, { ...activity, id });
-  }
-  for (const activity of secondary || []) {
-    const id = normalizeActivityId(activity?.id);
-    if (!id) continue;
-    map.set(id, { ...activity, id });
-  }
-  return Array.from(map.values());
 }
 
 function createDefaultWalletDb() {
@@ -459,23 +432,21 @@ function computeXpTotal(activities, db) {
 }
 
 async function fetchChallengesForWallet(wallet) {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return [];
-  try {
-    const statusList = XP_CHALLENGE_STATUSES.join(",");
-    const response = await axios.get(`${SUPABASE_URL}/rest/v1/challenges`, {
-      headers: supabaseHeaders(),
-      params: {
-        select:
-          "id,creator_address,opponent_address,creator_progress,opponent_progress,status",
-        or: `(creator_address.eq.${wallet},opponent_address.eq.${wallet})`,
-        status: `in.(${statusList})`
-      }
-    });
-    return Array.isArray(response.data) ? response.data : [];
-  } catch (err) {
-    console.error("Errore lettura challenges:", err);
-    return [];
-  }
+  return withSupabase(
+    async () => {
+      const { data, error } = await supabase
+        .from("challenges")
+        .select(
+          "id,creator_address,opponent_address,creator_progress,opponent_progress,status"
+        )
+        .or(`creator_address.eq.${wallet},opponent_address.eq.${wallet}`)
+        .in("status", XP_CHALLENGE_STATUSES);
+      if (error) throw error;
+      return Array.isArray(data) ? data : [];
+    },
+    [],
+    "fetchChallengesForWallet"
+  );
 }
 
 function computeChallengeXp(wallet, challenges) {
@@ -701,13 +672,22 @@ async function refreshStravaAccessToken(wallet, refreshToken, athleteId) {
 
   const accessToken = refreshResponse.data?.access_token;
   const newRefreshToken = refreshResponse.data?.refresh_token;
+  const expiresAt = refreshResponse.data?.expires_at;
   if (!accessToken) {
     throw new Error("Token Strava non valido");
   }
 
-  if (newRefreshToken && newRefreshToken !== refreshToken) {
-    await upsertStravaToken(wallet, newRefreshToken, athleteId);
-  }
+  const expiresAtIso = Number.isFinite(expiresAt)
+    ? new Date(expiresAt * 1000).toISOString()
+    : null;
+  await upsertStravaToken(wallet, {
+    user_id: wallet,
+    access_token: accessToken,
+    refresh_token: newRefreshToken || refreshToken,
+    expires_at: expiresAtIso,
+    athlete_id: athleteId ?? null,
+    updated_at: new Date().toISOString()
+  });
 
   return accessToken;
 }
@@ -716,6 +696,14 @@ async function getStravaAccessToken(wallet) {
   const tokens = await fetchStravaToken(wallet);
   if (!tokens || !tokens.refresh_token) {
     throw new Error("Token Strava mancante");
+  }
+  const expiresAt = tokens.expires_at
+    ? new Date(tokens.expires_at).getTime()
+    : 0;
+  const hasValidAccess =
+    tokens.access_token && expiresAt - Date.now() > 60000;
+  if (hasValidAccess) {
+    return tokens.access_token;
   }
   return refreshStravaAccessToken(wallet, tokens.refresh_token, tokens.athlete_id);
 }
@@ -889,7 +877,7 @@ function computeArenaProgress(activities, type) {
       const distance = Number(activity.distance) || 0;
       return sum + distance;
     }, 0);
-    return Math.round(meters);
+    return meters;
   }
 
   const km = activities.reduce((sum, activity) => {
@@ -897,96 +885,93 @@ function computeArenaProgress(activities, type) {
     const distance = Number(activity.distance) || 0;
     return sum + distance / 1000;
   }, 0);
-  return Math.round(km * 100) / 100;
+  return km;
 }
 
 function isArenaTypeMatch(activityType, targetType) {
   if (!activityType) return false;
   const normalized = String(activityType).toLowerCase();
-  if (targetType === "Nuoto") {
-    return normalized.includes("swim") || normalized.includes("nuoto");
-  }
-  if (targetType === "Corsa") {
-    return normalized.includes("run") || normalized.includes("corsa");
-  }
-  if (targetType === "Palestra") {
+  const target = normalizeArenaType(targetType).toLowerCase();
+  if (target === "palestra") {
     return ARENA_GYM_TYPES.has(activityType) ||
       ARENA_GYM_TYPES.has(String(activityType)) ||
-      Array.from(ARENA_GYM_TYPES).some(
-        (entry) => entry.toLowerCase() === normalized
-      );
+      normalized.includes("workout") ||
+      normalized.includes("crossfit") ||
+      normalized.includes("weight");
   }
-  return false;
+  if (target === "nuoto") {
+    return normalized.includes("swim") || normalized.includes("nuoto");
+  }
+  return normalized.includes("run") || normalized.includes("corsa");
 }
 
 function getArenaActivityDelta(activity, arenaType) {
   if (!activity) return 0;
   const activityType = activity.type ?? "";
   if (!isArenaTypeMatch(activityType, arenaType)) return 0;
-
-  if (arenaType === "Palestra") {
-    return 1;
-  }
-
   const distance = Number(activity.distance) || 0;
-  if (arenaType === "Nuoto") {
+  if (normalizeArenaType(arenaType) === "Nuoto") {
     return distance;
   }
-
+  if (normalizeArenaType(arenaType) === "Palestra") {
+    return 1;
+  }
   return distance / 1000;
 }
 
 function computeArenaProgressWithFinish(activities, type, goal) {
   const arenaType = normalizeArenaType(type);
-  const target = Number(goal);
-  const hasTarget = Number.isFinite(target) && target > 0;
-  const entries = (activities || [])
-    .map((activity) => {
-      const dateValue = getActivityDate(activity);
-      if (!dateValue) return null;
-      const timestamp = new Date(dateValue).getTime();
-      if (Number.isNaN(timestamp)) return null;
-      const delta = getArenaActivityDelta(activity, arenaType);
-      if (!Number.isFinite(delta) || delta <= 0) return null;
-      return { timestamp, delta };
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.timestamp - b.timestamp);
-
+  const target = Number(goal) || 0;
+  if (!Array.isArray(activities)) {
+    return { progress: 0, finishedAt: null };
+  }
+  if (!Number.isFinite(target) || target <= 0) {
+    return { progress: 0, finishedAt: null };
+  }
   let progress = 0;
   let finishedAt = null;
 
-  for (const entry of entries) {
-    progress += entry.delta;
-    if (hasTarget && !finishedAt && progress >= target) {
-      finishedAt = new Date(entry.timestamp).toISOString();
-      progress = target;
-      break;
-    }
-  }
+  const sorted = activities
+    .map((activity) => {
+      const dateValue = getActivityDate(activity);
+      return {
+        activity,
+        timestamp: dateValue ? new Date(dateValue).getTime() : 0
+      };
+    })
+    .filter((item) => item.timestamp > 0)
+    .sort((a, b) => a.timestamp - b.timestamp);
 
-  if (hasTarget) {
-    progress = Math.min(progress, target);
+  for (const item of sorted) {
+    const delta = getArenaActivityDelta(item.activity, arenaType);
+    if (delta === 0) {
+      continue;
+    }
+    progress += delta;
+    if (progress >= target && !finishedAt) {
+      finishedAt = new Date(item.timestamp).toISOString();
+    }
   }
 
   return { progress, finishedAt };
 }
 
-function clampArenaProgress(progress, goal) {
-  const numericGoal = Number(goal);
-  if (!Number.isFinite(numericGoal) || numericGoal <= 0) {
-    return progress;
-  }
-  return Math.min(progress, numericGoal);
+function normalizeChallengeStatus(status) {
+  const value = (status || "").toString().toLowerCase();
+  if (!value) return "active";
+  if (value.includes("matched")) return "matched";
+  if (value.includes("resolved")) return "resolved";
+  if (value.includes("claimed") || value.includes("claim")) return "claimed";
+  if (value.includes("draw")) return "draw";
+  return value;
 }
 
 function getChallengeWindow(challenge) {
+  const startAt = challenge?.start_at || challenge?.created_at;
   const durationDays =
     Number(challenge?.duration_days) || ARENA_DEFAULT_DURATION_DAYS;
-  const startAt =
-    challenge?.start_at || challenge?.created_at || null;
-  let endAt = challenge?.end_at || null;
-  if (startAt && !endAt) {
+  let endAt = challenge?.end_at;
+  if (!endAt && startAt) {
     const startDate = new Date(startAt);
     if (!Number.isNaN(startDate.getTime())) {
       const endDate = new Date(startDate);
@@ -997,26 +982,36 @@ function getChallengeWindow(challenge) {
   return { startAt, endAt, durationDays };
 }
 
-async function resolveArenaChallenge(challenge) {
-  if (!challenge?.id) {
-    throw new Error("Id sfida mancante");
-  }
-  const { startAt, endAt } = getChallengeWindow(challenge);
-  if (!startAt || !endAt) {
-    throw new Error("Finestra sfida non valida");
-  }
-  const endTime = new Date(endAt).getTime();
-  if (Number.isNaN(endTime)) {
-    throw new Error("Data fine sfida non valida");
-  }
-  if (endTime > Date.now()) {
-    return { status: "pending" };
-  }
-
+async function updateArenaProgress(challenge) {
   const creator = normalizeWallet(challenge.creator_address);
   const opponent = normalizeWallet(challenge.opponent_address);
   if (!creator || !opponent) {
     throw new Error("Wallet sfida non validi");
+  }
+
+  const cachedCreator = getCachedArenaProgress(
+    creator,
+    challenge.type,
+    challenge.start_at,
+    challenge.end_at
+  );
+  const cachedOpponent = getCachedArenaProgress(
+    opponent,
+    challenge.type,
+    challenge.start_at,
+    challenge.end_at
+  );
+  if (cachedCreator !== null && cachedOpponent !== null) {
+    return {
+      creator_progress: cachedCreator,
+      opponent_progress: cachedOpponent,
+      status: "cached"
+    };
+  }
+
+  const { startAt, endAt } = getChallengeWindow(challenge);
+  if (!startAt) {
+    throw new Error("Intervallo sfida non valido");
   }
 
   const [creatorToken, opponentToken] = await Promise.all([
@@ -1040,18 +1035,29 @@ async function resolveArenaChallenge(challenge) {
     endAt
   );
 
-  const creatorResult = computeArenaProgressWithFinish(
+  const creatorProgress = computeArenaProgress(
     creatorActivities,
-    challenge.type,
-    challenge.goal
+    challenge.type
   );
-  const opponentResult = computeArenaProgressWithFinish(
+  const opponentProgress = computeArenaProgress(
     opponentActivities,
-    challenge.type,
-    challenge.goal
+    challenge.type
   );
-  const creatorProgress = creatorResult.progress;
-  const opponentProgress = opponentResult.progress;
+
+  setCachedArenaProgress(
+    creator,
+    challenge.type,
+    challenge.start_at,
+    challenge.end_at,
+    creatorProgress
+  );
+  setCachedArenaProgress(
+    opponent,
+    challenge.type,
+    challenge.start_at,
+    challenge.end_at,
+    opponentProgress
+  );
 
   if (!creatorToken?.refresh_token && creatorActivities.length === 0) {
     missingWallets.push(creator);
@@ -1068,72 +1074,60 @@ async function resolveArenaChallenge(challenge) {
     }
   }
 
-  let status = "resolved";
-  let winnerAddress = null;
-  const creatorFinish = creatorResult.finishedAt
-    ? new Date(creatorResult.finishedAt).getTime()
-    : null;
-  const opponentFinish = opponentResult.finishedAt
-    ? new Date(opponentResult.finishedAt).getTime()
-    : null;
-  if (creatorFinish && opponentFinish) {
-    if (creatorFinish === opponentFinish) {
-      status = "draw";
-    } else {
-      winnerAddress = creatorFinish < opponentFinish ? creator : opponent;
-    }
-  } else if (creatorFinish) {
-    winnerAddress = creator;
-  } else if (opponentFinish) {
-    winnerAddress = opponent;
-  } else {
-    const diff = creatorProgress - opponentProgress;
-    const epsilon = 0.0001;
-    if (Math.abs(diff) <= epsilon) {
-      status = "draw";
-    } else if (diff > 0) {
-      winnerAddress = creator;
-    } else {
-      winnerAddress = opponent;
-    }
-  }
-
-  await updateChallengeById(challenge.id, {
-    status,
-    winner_address: winnerAddress,
+  const patch = {
     creator_progress: creatorProgress,
     opponent_progress: opponentProgress,
     start_at: startAt,
-    end_at: endAt,
-    resolved_at: new Date().toISOString()
-  });
+    end_at: endAt || challenge.end_at
+  };
+
+  await updateChallengeById(challenge.id, patch);
 
   return {
-    status,
-    winner_address: winnerAddress,
     creator_progress: creatorProgress,
     opponent_progress: opponentProgress,
-    end_at: endAt,
-    missing_wallets: missingWallets.length ? missingWallets : undefined,
-    partial: missingWallets.length > 0
+    status: missingWallets.length > 0 ? "partial" : "updated",
+    missing_wallets: missingWallets.length ? missingWallets : undefined
   };
 }
 
-async function updateArenaProgress(challenge) {
-  if (!challenge?.id) {
-    throw new Error("Id sfida mancante");
-  }
-  const { startAt, endAt } = getChallengeWindow(challenge);
-  if (!startAt) {
-    throw new Error("Inizio sfida mancante");
-  }
-  const nowIso = new Date().toISOString();
-  const rangeEnd = endAt && new Date(endAt).getTime() < Date.now() ? endAt : nowIso;
-
+async function resolveArenaChallenge(challenge) {
   const creator = normalizeWallet(challenge.creator_address);
   const opponent = normalizeWallet(challenge.opponent_address);
   if (!creator || !opponent) {
     throw new Error("Wallet sfida non validi");
+  }
+
+  const status = normalizeChallengeStatus(challenge.status);
+  if (status !== "matched") {
+    return { status };
+  }
+
+  const { startAt, endAt, durationDays } = getChallengeWindow(challenge);
+  if (!startAt) {
+    throw new Error("Intervallo sfida non valido");
+  }
+  const rangeEnd = endAt || new Date(Date.now() + durationDays * 86400000).toISOString();
+
+  const cachedCreator = getCachedArenaProgress(
+    creator,
+    challenge.type,
+    startAt,
+    endAt
+  );
+  const cachedOpponent = getCachedArenaProgress(
+    opponent,
+    challenge.type,
+    startAt,
+    endAt
+  );
+
+  if (cachedCreator !== null && cachedOpponent !== null) {
+    return {
+      creator_progress: cachedCreator,
+      opponent_progress: cachedOpponent,
+      status: "cached"
+    };
   }
 
   const [creatorToken, opponentToken] = await Promise.all([
@@ -1185,7 +1179,7 @@ async function updateArenaProgress(challenge) {
     }
   }
 
-  let status = missingWallets.length > 0 ? "partial" : "updated";
+  let statusResult = missingWallets.length > 0 ? "partial" : "updated";
   let winnerAddress = null;
   const creatorFinish = creatorResult.finishedAt
     ? new Date(creatorResult.finishedAt).getTime()
@@ -1196,13 +1190,13 @@ async function updateArenaProgress(challenge) {
   if (creatorFinish || opponentFinish) {
     if (creatorFinish && opponentFinish) {
       if (creatorFinish === opponentFinish) {
-        status = "draw";
+        statusResult = "draw";
       } else {
-        status = "resolved";
+        statusResult = "resolved";
         winnerAddress = creatorFinish < opponentFinish ? creator : opponent;
       }
     } else {
-      status = "resolved";
+      statusResult = "resolved";
       winnerAddress = creatorFinish ? creator : opponent;
     }
   }
@@ -1213,8 +1207,8 @@ async function updateArenaProgress(challenge) {
     start_at: startAt,
     end_at: endAt || rangeEnd
   };
-  if (status === "resolved" || status === "draw") {
-    patch.status = status;
+  if (statusResult === "resolved" || statusResult === "draw") {
+    patch.status = statusResult;
     patch.winner_address = winnerAddress;
     patch.resolved_at = new Date().toISOString();
   }
@@ -1224,7 +1218,7 @@ async function updateArenaProgress(challenge) {
   return {
     creator_progress: creatorProgress,
     opponent_progress: opponentProgress,
-    status,
+    status: statusResult,
     winner_address: winnerAddress,
     missing_wallets: missingWallets.length ? missingWallets : undefined
   };
@@ -1405,10 +1399,7 @@ app.post("/strava/sync", async (req, res) => {
     const accessToken = await getStravaAccessToken(wallet);
 
     const activities = await fetchRecentActivities(accessToken);
-    const store = loadPaidActivitiesStore();
-    const localActivities = getWalletActivities(store, wallet);
-    const dbActivities = await loadWalletActivities(wallet);
-    const walletActivities = mergeActivities(localActivities, dbActivities);
+    const walletActivities = await loadWalletActivities(wallet);
     const paidIds = new Set(
       walletActivities
         .map((activity) => normalizeActivityId(activity?.id))
@@ -1440,11 +1431,7 @@ app.post("/strava/sync", async (req, res) => {
     await mintReward(totalRewardWithBonus, wallet);
 
     const updatedActivities = walletActivities.concat(pendingActivities);
-    store.wallets[wallet] = updatedActivities;
-    savePaidActivitiesStore(store);
-    if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-      await upsertMintedActivities(wallet, pendingActivities);
-    }
+    await upsertMintedActivities(wallet, pendingActivities);
 
     const stats = computeBadgeStats(activities, db.stats);
     db.stats = stats;
@@ -1686,6 +1673,7 @@ app.get("/strava/callback", async (req, res) => {
 
     const accessToken = tokenResponse.data?.access_token;
     const refreshToken = tokenResponse.data?.refresh_token;
+    const expiresAt = tokenResponse.data?.expires_at;
     const athleteId = tokenResponse.data?.athlete?.id;
     if (!accessToken) {
       return res.status(502).json({ error: "No access token from Strava" });
@@ -1699,14 +1687,21 @@ app.get("/strava/callback", async (req, res) => {
           );
         }
       }
-      await upsertStravaToken(wallet, refreshToken, athleteId);
+      const expiresAtIso = Number.isFinite(expiresAt)
+        ? new Date(expiresAt * 1000).toISOString()
+        : null;
+      await upsertStravaToken(wallet, {
+        user_id: wallet,
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        expires_at: expiresAtIso,
+        athlete_id: athleteId ?? null,
+        updated_at: new Date().toISOString()
+      });
     }
 
     const activities = await fetchRecentActivities(accessToken);
-    const store = loadPaidActivitiesStore();
-    const localActivities = getWalletActivities(store, wallet);
-    const dbActivities = await loadWalletActivities(wallet);
-    const walletActivities = mergeActivities(localActivities, dbActivities);
+    const walletActivities = await loadWalletActivities(wallet);
     const paidIds = new Set(
       walletActivities
         .map((activity) => normalizeActivityId(activity?.id))
@@ -1734,11 +1729,7 @@ app.get("/strava/callback", async (req, res) => {
     await mintReward(totalRewardWithBonus, wallet);
 
     const updatedActivities = walletActivities.concat(pendingActivities);
-    store.wallets[wallet] = updatedActivities;
-    savePaidActivitiesStore(store);
-    if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-      await upsertMintedActivities(wallet, pendingActivities);
-    }
+    await upsertMintedActivities(wallet, pendingActivities);
 
     const stats = computeBadgeStats(activities, db.stats);
     db.stats = stats;
