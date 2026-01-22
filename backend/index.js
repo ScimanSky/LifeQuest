@@ -53,6 +53,7 @@ const ARENA_GYM_TYPES = new Set([
   ...MINDFULNESS_TYPES,
   "Iron Protocol"
 ]);
+const MIN_TRACKED_DISTANCE_METERS = 100;
 const MINDFULNESS_MIN_SECONDS = 0;
 const XP_CHALLENGE_STATUSES = [
   "completed",
@@ -484,6 +485,14 @@ function isValidSwim(activity) {
   return activity.type === "Swim" && Number(activity.distance) >= 1000;
 }
 
+function isTrackedRun(activity) {
+  return activity.type === "Run" && Number(activity.distance) >= MIN_TRACKED_DISTANCE_METERS;
+}
+
+function isTrackedSwim(activity) {
+  return activity.type === "Swim" && Number(activity.distance) >= MIN_TRACKED_DISTANCE_METERS;
+}
+
 function isValidIron(activity) {
   return IRON_PROTOCOL_TYPES.has(activity.type);
 }
@@ -518,8 +527,8 @@ function computeWeeklyGoalCounts(activities, reference) {
       continue;
     }
 
-    if (isValidRun(activity)) counts.run += 1;
-    if (isValidSwim(activity)) counts.swim += 1;
+    if (isTrackedRun(activity)) counts.run += 1;
+    if (isTrackedSwim(activity)) counts.swim += 1;
     if (isValidIron(activity)) counts.iron += 1;
     if (isValidMindfulness(activity)) counts.mindfulness += 1;
   }
@@ -591,11 +600,11 @@ function computeBadgeStats(activities, stats = {}) {
 
     const distance = Number(activity.distance) || 0;
 
-    if (activity.type === "Run") {
+    if (isTrackedRun(activity)) {
       totalRunDistanceMeters += distance;
     }
 
-    if (activity.type === "Swim") {
+    if (isTrackedSwim(activity)) {
       swimSessions += 1;
     }
 
@@ -875,6 +884,7 @@ function computeArenaProgress(activities, type) {
     const meters = activities.reduce((sum, activity) => {
       if (!activity || activity.type !== "Swim") return sum;
       const distance = Number(activity.distance) || 0;
+      if (distance < MIN_TRACKED_DISTANCE_METERS) return sum;
       return sum + distance;
     }, 0);
     return meters;
@@ -883,6 +893,7 @@ function computeArenaProgress(activities, type) {
   const km = activities.reduce((sum, activity) => {
     if (!activity || activity.type !== "Run") return sum;
     const distance = Number(activity.distance) || 0;
+    if (distance < MIN_TRACKED_DISTANCE_METERS) return sum;
     return sum + distance / 1000;
   }, 0);
   return km;
@@ -910,11 +921,14 @@ function getArenaActivityDelta(activity, arenaType) {
   const activityType = activity.type ?? "";
   if (!isArenaTypeMatch(activityType, arenaType)) return 0;
   const distance = Number(activity.distance) || 0;
-  if (normalizeArenaType(arenaType) === "Nuoto") {
-    return distance;
-  }
   if (normalizeArenaType(arenaType) === "Palestra") {
     return 1;
+  }
+  if (distance < MIN_TRACKED_DISTANCE_METERS) {
+    return 0;
+  }
+  if (normalizeArenaType(arenaType) === "Nuoto") {
+    return distance;
   }
   return distance / 1000;
 }
