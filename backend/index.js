@@ -71,7 +71,9 @@ const WEEKLY_GOALS = {
 
 const CONTRACT_ABI = [
   "function mint(address to, uint256 amount)",
-  "function balanceOf(address account) view returns (uint256)"
+  "function balanceOf(address account) view returns (uint256)",
+  "function MINTER_ROLE() view returns (bytes32)",
+  "function hasRole(bytes32 role, address account) view returns (bool)"
 ];
 const DATABASE_PATH = path.join(__dirname, "database.json");
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
@@ -86,6 +88,15 @@ const supabase =
       })
     : null;
 const arenaProgressCache = new Map();
+
+function getContractAddress() {
+  return (
+    process.env.CONTRACT_ADDRESS ||
+    process.env.NEXT_PUBLIC_LIFE_TOKEN_ADDRESS ||
+    process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ||
+    ""
+  );
+}
 
 function normalizeWallet(address) {
   if (!address || typeof address !== "string") return null;
@@ -651,9 +662,13 @@ function checkBadgeUnlock(stats, db) {
 }
 
 async function fetchBalance(address) {
+  const contractAddress = getContractAddress();
+  if (!contractAddress) {
+    throw new Error("CONTRACT_ADDRESS non configurato");
+  }
   const provider = new ethers.JsonRpcProvider(process.env.POLYGON_RPC_URL);
   const contract = new ethers.Contract(
-    process.env.CONTRACT_ADDRESS,
+    contractAddress,
     CONTRACT_ABI,
     provider
   );
@@ -1243,13 +1258,22 @@ async function mintArenaReward(amount, recipient) {
   if (!Number.isFinite(normalized) || normalized <= 0) {
     throw new Error("Importo non valido");
   }
+  const contractAddress = getContractAddress();
+  if (!contractAddress) {
+    throw new Error("CONTRACT_ADDRESS non configurato");
+  }
   const provider = new ethers.JsonRpcProvider(process.env.POLYGON_RPC_URL);
   const wallet = new ethers.Wallet(process.env.OWNER_PRIVATE_KEY, provider);
   const contract = new ethers.Contract(
-    process.env.CONTRACT_ADDRESS,
+    contractAddress,
     CONTRACT_ABI,
     wallet
   );
+  const minterRole = await contract.MINTER_ROLE();
+  const isMinter = await contract.hasRole(minterRole, wallet.address);
+  if (!isMinter) {
+    throw new Error("Server non autorizzato a mintare (MINTER_ROLE mancante)");
+  }
   const rounded = Math.round(normalized * 10000) / 10000;
   const tx = await contract.mint(
     recipient,
@@ -1260,13 +1284,22 @@ async function mintArenaReward(amount, recipient) {
 }
 
 async function mintReward(totalReward, recipient) {
+  const contractAddress = getContractAddress();
+  if (!contractAddress) {
+    throw new Error("CONTRACT_ADDRESS non configurato");
+  }
   const provider = new ethers.JsonRpcProvider(process.env.POLYGON_RPC_URL);
   const wallet = new ethers.Wallet(process.env.OWNER_PRIVATE_KEY, provider);
   const contract = new ethers.Contract(
-    process.env.CONTRACT_ADDRESS,
+    contractAddress,
     CONTRACT_ABI,
     wallet
   );
+  const minterRole = await contract.MINTER_ROLE();
+  const isMinter = await contract.hasRole(minterRole, wallet.address);
+  if (!isMinter) {
+    throw new Error("Server non autorizzato a mintare (MINTER_ROLE mancante)");
+  }
 
   const tx = await contract.mint(
     recipient,
